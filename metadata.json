@@ -1,0 +1,7 @@
+{
+  "name": "ProgressMemo",
+  "description": "双视图模式的本地事项管理应用，支持表格视图、拖拽排序、录音、富文本和附件。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
