@@ -13,6 +13,8 @@ export default function App() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [overviewFilter, setOverviewFilter] = useState<'all' | 'todo' | 'in-progress' | 'blocked' | 'done'>('all');
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [isBatchMode, setIsBatchMode] = useState(false);
 
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
 
@@ -35,22 +37,36 @@ export default function App() {
     await db.tasks.add(newTask);
   };
 
+  useEffect(() => {
+    setSelectedTaskIds(new Set());
+  }, [viewMode, selectedCategoryId, overviewFilter]);
+
+  const handleBatchDelete = async () => {
+    if (selectedTaskIds.size === 0) return;
+    if (window.confirm(`确定删除选中的 ${selectedTaskIds.size} 个事项吗？`)) {
+      await db.tasks.bulkDelete(Array.from(selectedTaskIds));
+      setSelectedTaskIds(new Set());
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
       {/* Top Navigation Bar */}
-      <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+      <header className="bg-white border-b-2 border-slate-300 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-md">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
+          <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center text-white font-bold shadow-sm">
             P
           </div>
-          <h1 className="text-lg font-semibold tracking-tight">进度备忘</h1>
+          <h1 className="text-lg font-bold tracking-tight text-slate-800">进度备忘</h1>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-lg">
+        <div className="flex bg-slate-300 p-1 rounded-lg border-2 border-slate-400">
           <button
             onClick={() => setViewMode('overview')}
             className={cn(
-              "px-4 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-colors",
-              viewMode === 'overview' ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+              "px-4 py-1.5 text-sm font-bold rounded-md flex items-center gap-2 transition-all border-2",
+              viewMode === 'overview' 
+                ? "bg-blue-800 text-white border-blue-900 shadow-md" 
+                : "text-slate-700 border-transparent hover:bg-slate-100"
             )}
           >
             <LayoutGrid className="w-4 h-4" />
@@ -64,8 +80,10 @@ export default function App() {
               }
             }}
             className={cn(
-              "px-4 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-colors",
-              viewMode === 'category' ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+              "px-4 py-1.5 text-sm font-bold rounded-md flex items-center gap-2 transition-all border-2",
+              viewMode === 'category' 
+                ? "bg-blue-800 text-white border-blue-900 shadow-md" 
+                : "text-slate-700 border-transparent hover:bg-slate-100"
             )}
           >
             <ListTodo className="w-4 h-4" />
@@ -73,7 +91,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setIsCategoryManagerOpen(true)}
-            className="px-4 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-colors text-slate-600 hover:text-slate-900"
+            className="px-4 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-colors text-slate-700 hover:bg-slate-100"
             title="管理分类"
           >
             <Settings2 className="w-4 h-4" />
@@ -91,10 +109,10 @@ export default function App() {
                     key={filter}
                     onClick={() => setOverviewFilter(filter)}
                     className={cn(
-                      "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
+                      "px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all border-2",
                       overviewFilter === filter
-                        ? "bg-slate-800 text-white"
-                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                        ? "bg-slate-900 text-white border-black shadow-md"
+                        : "bg-white text-slate-800 border-slate-400 hover:border-slate-600 hover:bg-slate-50"
                     )}
                   >
                     {filter === 'all' && '全部'}
@@ -105,8 +123,64 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
-                <TaskTable filter={overviewFilter} categories={categories} />
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    if (categories.length > 0) {
+                      handleCreateTask(categories[0].id);
+                    } else {
+                      setIsCategoryManagerOpen(true);
+                    }
+                  }}
+                  className="flex items-center justify-center bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-800 transition-all shadow-md border-2 border-blue-900 active:scale-95"
+                >
+                  +新事项
+                </button>
+                
+                {!isBatchMode ? (
+                  <button
+                    onClick={() => setIsBatchMode(true)}
+                    className="flex items-center justify-center bg-white text-red-600 px-6 py-2 rounded-lg text-sm font-bold hover:bg-red-50 transition-all shadow-md border-2 border-red-200 active:scale-95"
+                  >
+                    批量删除
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleBatchDelete}
+                      disabled={selectedTaskIds.size === 0}
+                      className="flex items-center justify-center bg-red-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-red-700 disabled:opacity-50 transition-all shadow-md border-2 border-red-800 active:scale-95"
+                    >
+                      确认删除 ({selectedTaskIds.size})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsBatchMode(false);
+                        setSelectedTaskIds(new Set());
+                      }}
+                      className="flex items-center justify-center bg-white text-slate-600 px-6 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 transition-all shadow-md border-2 border-slate-200 active:scale-95"
+                    >
+                      取消
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white rounded-xl shadow-md border-2 border-slate-300 flex-1 overflow-hidden flex flex-col">
+                <TaskTable 
+                  filter={overviewFilter} 
+                  categories={categories} 
+                  isBatchMode={isBatchMode}
+                  selectedTaskIds={selectedTaskIds}
+                  onToggleSelection={(id) => {
+                    const newSet = new Set(selectedTaskIds);
+                    if (newSet.has(id)) newSet.delete(id);
+                    else newSet.add(id);
+                    setSelectedTaskIds(newSet);
+                  }}
+                  onSelectAll={(ids) => setSelectedTaskIds(new Set(ids))}
+                />
               </div>
             </div>
           ) : (
@@ -117,31 +191,72 @@ export default function App() {
                     key={cat.id}
                     onClick={() => setSelectedCategoryId(cat.id)}
                     className={cn(
-                      "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border",
+                      "px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all border-2",
                       selectedCategoryId === cat.id
-                        ? "bg-blue-50 text-blue-700 border-blue-200"
-                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                        ? "bg-blue-200 text-blue-900 border-blue-700 shadow-sm"
+                        : "bg-white text-slate-700 border-slate-400 hover:border-slate-600 hover:bg-slate-50"
                     )}
                   >
                     {cat.name}
                   </button>
                 ))}
               </div>
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                  <h2 className="font-medium text-slate-800">
+              <div className="bg-white rounded-xl shadow-md border-2 border-slate-300 flex-1 overflow-hidden flex flex-col">
+                <div className="p-4 border-b-2 border-slate-300 flex justify-between items-center bg-slate-200">
+                  <h2 className="font-bold text-slate-900 text-lg">
                     {categories.find(c => c.id === selectedCategoryId)?.name || '选择分类'}
                   </h2>
-                  <button
-                    onClick={() => selectedCategoryId && handleCreateTask(selectedCategoryId)}
-                    disabled={!selectedCategoryId}
-                    className="flex items-center gap-1 text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    新建事项
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => selectedCategoryId && handleCreateTask(selectedCategoryId)}
+                      disabled={!selectedCategoryId}
+                      className="flex items-center justify-center text-xs bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-blue-800 disabled:opacity-50 transition-all shadow-md border-2 border-blue-900 active:scale-95"
+                    >
+                      +新事项
+                    </button>
+                    
+                    {!isBatchMode ? (
+                      <button
+                        onClick={() => setIsBatchMode(true)}
+                        className="flex items-center justify-center text-xs bg-white text-red-600 px-4 py-1.5 rounded-lg font-bold hover:bg-red-50 transition-all shadow-md border-2 border-red-200 active:scale-95"
+                      >
+                        批量删除
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleBatchDelete}
+                          disabled={selectedTaskIds.size === 0}
+                          className="flex items-center justify-center text-xs bg-red-600 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 transition-all shadow-md border-2 border-red-800 active:scale-95"
+                        >
+                          确认删除 ({selectedTaskIds.size})
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsBatchMode(false);
+                            setSelectedTaskIds(new Set());
+                          }}
+                          className="flex items-center justify-center text-xs bg-white text-slate-600 px-4 py-1.5 rounded-lg font-bold hover:bg-slate-50 transition-all shadow-md border-2 border-slate-200 active:scale-95"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <TaskTable categoryId={selectedCategoryId} categories={categories} />
+                <TaskTable 
+                  categoryId={selectedCategoryId} 
+                  categories={categories} 
+                  isBatchMode={isBatchMode}
+                  selectedTaskIds={selectedTaskIds}
+                  onToggleSelection={(id) => {
+                    const newSet = new Set(selectedTaskIds);
+                    if (newSet.has(id)) newSet.delete(id);
+                    else newSet.add(id);
+                    setSelectedTaskIds(newSet);
+                  }}
+                  onSelectAll={(ids) => setSelectedTaskIds(new Set(ids))}
+                />
               </div>
             </div>
           )}

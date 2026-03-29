@@ -21,11 +21,13 @@ export interface Task {
   categoryId: string;
   title: string;
   date: string; // YYYY-MM-DD
+  time?: string; // HH:mm
   status: TaskStatus;
   audioBlob?: Blob;
   shortNote: string;
   notes: string; // HTML string
   attachments: Attachment[];
+  tags?: string[];
   order: number;
   blockedReason?: string;
 }

@@ -20,6 +20,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ imageUrl, on
         alt="Attachment preview" 
         className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+        referrerPolicy="no-referrer"
       />
     </div>
   );

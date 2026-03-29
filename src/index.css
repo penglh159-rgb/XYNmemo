@@ -1,2 +1,8 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+@layer base {
+  .prose strong {
+    color: inherit !important;
+  }
+}
