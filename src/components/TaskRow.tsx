@@ -91,7 +91,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 2 : 1,
+    zIndex: isDragging ? 50 : (isAddingTag || isAudioPopoverOpen ? 40 : 1),
   };
 
   const handleStatusClick = async () => {
@@ -287,7 +287,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
           gridTemplateColumns: columns.map(c => `${c.width}px`).join(' ')
         }}
         className={cn(
-          "grid gap-4 p-3 items-center bg-white hover:bg-slate-50/80 transition-colors group/row border-b border-slate-100",
+          "relative grid gap-4 p-3 items-center bg-white hover:bg-slate-50/80 transition-colors group/row border-b border-slate-100",
           isDragging && "shadow-lg ring-1 ring-blue-500/20 opacity-90",
           isSelected && "bg-blue-50/50"
         )}
@@ -366,9 +366,10 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
                   <div className="relative">
                     <button
                       onClick={(e) => { e.stopPropagation(); setIsAddingTag(!isAddingTag); }}
-                      className="text-[9px] px-2 py-0.5 rounded-sm bg-blue-50 text-blue-700 border border-blue-200 font-bold hover:bg-blue-100 transition-all shadow-sm flex items-center gap-1"
+                      className="text-[9px] px-2 py-0.5 rounded-sm bg-blue-50 text-blue-700 border border-blue-200 font-bold hover:bg-blue-100 transition-all shadow-sm flex items-center justify-center min-w-[20px]"
+                      title="添加标签"
                     >
-                      + 标签
+                      +
                     </button>
                     
                     {isAddingTag && (

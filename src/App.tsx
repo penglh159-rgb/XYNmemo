@@ -1,7 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { db, initDB, Category, Task } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LayoutGrid, ListTodo, Plus, Settings2 } from 'lucide-react';
+import { LayoutGrid, ListTodo, Plus, Settings2, Download, Upload } from 'lucide-react';
+
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
+const base64ToBlob = async (base64: string): Promise<Blob> => {
+  const res = await fetch(base64);
+  return await res.blob();
+};
 import { cn } from './lib/utils';
 import { TaskTable } from './components/TaskTable';
 import { CategoryManagerModal } from './components/CategoryManagerModal';
@@ -15,6 +29,7 @@ export default function App() {
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
 
@@ -49,28 +64,157 @@ export default function App() {
     }
   };
 
+  const handleBackup = async () => {
+    try {
+      const tasks = await db.tasks.toArray();
+      const categories = await db.categories.toArray();
+
+      const processedTasks = await Promise.all(tasks.map(async (task) => {
+        const processedTask: any = { ...task };
+        if (task.audioBlob) {
+          processedTask.audioBlob = await blobToBase64(task.audioBlob);
+        }
+        if (task.attachments && task.attachments.length > 0) {
+          processedTask.attachments = await Promise.all(task.attachments.map(async (att) => ({
+            ...att,
+            data: await blobToBase64(att.data)
+          })));
+        }
+        return processedTask;
+      }));
+
+      const backupData = {
+        tasks: processedTasks,
+        categories,
+        localStorage: {
+          'task-table-columns': localStorage.getItem('task-table-columns')
+        }
+      };
+
+      const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `progress-memo-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Backup failed:', error);
+      alert('备份失败，请查看控制台错误信息。');
+    }
+  };
+
+  const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const backupData = JSON.parse(content);
+
+        if (!backupData.tasks || !backupData.categories) {
+          throw new Error('无效的备份文件格式');
+        }
+
+        if (window.confirm('警告：恢复数据将覆盖当前所有数据！确定要继续吗？')) {
+          const processedTasks = await Promise.all(backupData.tasks.map(async (task: any) => {
+            const processedTask = { ...task };
+            if (task.audioBlob) {
+              processedTask.audioBlob = await base64ToBlob(task.audioBlob);
+            }
+            if (task.attachments && task.attachments.length > 0) {
+              processedTask.attachments = await Promise.all(task.attachments.map(async (att: any) => ({
+                ...att,
+                data: await base64ToBlob(att.data)
+              })));
+            }
+            return processedTask;
+          }));
+
+          await db.transaction('rw', db.tasks, db.categories, async () => {
+            await db.tasks.clear();
+            await db.categories.clear();
+            await db.tasks.bulkAdd(processedTasks);
+            await db.categories.bulkAdd(backupData.categories);
+          });
+
+          if (backupData.localStorage) {
+            Object.entries(backupData.localStorage).forEach(([key, value]) => {
+              if (value !== null && value !== undefined) {
+                localStorage.setItem(key, value as string);
+              }
+            });
+          }
+
+          alert('数据恢复成功！页面将自动刷新。');
+          window.location.reload();
+        }
+      } catch (error) {
+        console.error('Restore failed:', error);
+        alert('恢复失败：文件格式错误或数据损坏。');
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
       {/* Top Navigation Bar */}
-      <header className="bg-white border-b-2 border-slate-300 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-md">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center text-white font-bold shadow-sm">
+      <header className="bg-white border-b-2 border-slate-300 px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between sticky top-0 z-10 shadow-md overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pr-2">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-blue-700 flex items-center justify-center text-white font-bold shadow-sm text-xs sm:text-base">
             P
           </div>
-          <h1 className="text-lg font-bold tracking-tight text-slate-800">进度备忘</h1>
+          <h1 className="text-sm sm:text-lg font-bold tracking-tight text-slate-800 whitespace-nowrap">进度备忘</h1>
         </div>
-        <div className="flex bg-slate-300 p-1 rounded-lg border-2 border-slate-400">
-          <button
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button
+              onClick={handleBackup}
+              className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-md transition-colors border-2 border-slate-300 shadow-sm active:scale-95"
+              title="导出所有数据为 JSON"
+            >
+              <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">备份</span>
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-md transition-colors border-2 border-slate-300 shadow-sm active:scale-95"
+              title="从 JSON 恢复数据"
+            >
+              <Upload className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">恢复</span>
+            </button>
+            <input
+              type="file"
+              accept=".json"
+              ref={fileInputRef}
+              onChange={handleRestore}
+              className="hidden"
+            />
+          </div>
+
+          <div className="flex bg-slate-300 p-0.5 sm:p-1 rounded-lg border-2 border-slate-400">
+            <button
             onClick={() => setViewMode('overview')}
             className={cn(
-              "px-4 py-1.5 text-sm font-bold rounded-md flex items-center gap-2 transition-all border-2",
+              "px-2 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-sm font-bold rounded-md flex items-center gap-1 sm:gap-2 transition-all border-2 whitespace-nowrap",
               viewMode === 'overview' 
                 ? "bg-blue-800 text-white border-blue-900 shadow-md" 
                 : "text-slate-700 border-transparent hover:bg-slate-100"
             )}
           >
-            <LayoutGrid className="w-4 h-4" />
-            统合概览
+            <LayoutGrid className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">统合概览</span>
+            <span className="sm:hidden">概览</span>
           </button>
           <button
             onClick={() => {
@@ -80,22 +224,24 @@ export default function App() {
               }
             }}
             className={cn(
-              "px-4 py-1.5 text-sm font-bold rounded-md flex items-center gap-2 transition-all border-2",
+              "px-2 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-sm font-bold rounded-md flex items-center gap-1 sm:gap-2 transition-all border-2 whitespace-nowrap",
               viewMode === 'category' 
                 ? "bg-blue-800 text-white border-blue-900 shadow-md" 
                 : "text-slate-700 border-transparent hover:bg-slate-100"
             )}
           >
-            <ListTodo className="w-4 h-4" />
-            分类详情
+            <ListTodo className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">分类详情</span>
+            <span className="sm:hidden">分类</span>
           </button>
           <button
             onClick={() => setIsCategoryManagerOpen(true)}
-            className="px-4 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-colors text-slate-700 hover:bg-slate-100"
+            className="px-1.5 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-sm font-medium rounded-md flex items-center gap-1 sm:gap-2 transition-colors text-slate-700 hover:bg-slate-100"
             title="管理分类"
           >
-            <Settings2 className="w-4 h-4" />
+            <Settings2 className="w-3 h-3 sm:w-4 sm:h-4" />
           </button>
+        </div>
         </div>
       </header>
 
@@ -109,7 +255,7 @@ export default function App() {
                     key={filter}
                     onClick={() => setOverviewFilter(filter)}
                     className={cn(
-                      "px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all border-2",
+                      "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border-2",
                       overviewFilter === filter
                         ? "bg-slate-900 text-white border-black shadow-md"
                         : "bg-white text-slate-800 border-slate-400 hover:border-slate-600 hover:bg-slate-50"
@@ -133,7 +279,7 @@ export default function App() {
                       setIsCategoryManagerOpen(true);
                     }
                   }}
-                  className="flex items-center justify-center bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-800 transition-all shadow-md border-2 border-blue-900 active:scale-95"
+                  className="flex items-center justify-center bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-800 transition-all shadow-md border-2 border-blue-900 active:scale-95"
                 >
                   +新事项
                 </button>
@@ -141,7 +287,7 @@ export default function App() {
                 {!isBatchMode ? (
                   <button
                     onClick={() => setIsBatchMode(true)}
-                    className="flex items-center justify-center bg-white text-red-600 px-6 py-2 rounded-lg text-sm font-bold hover:bg-red-50 transition-all shadow-md border-2 border-red-200 active:scale-95"
+                    className="flex items-center justify-center bg-white text-red-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 transition-all shadow-md border-2 border-red-200 active:scale-95"
                   >
                     批量删除
                   </button>
@@ -150,7 +296,7 @@ export default function App() {
                     <button
                       onClick={handleBatchDelete}
                       disabled={selectedTaskIds.size === 0}
-                      className="flex items-center justify-center bg-red-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-red-700 disabled:opacity-50 transition-all shadow-md border-2 border-red-800 active:scale-95"
+                      className="flex items-center justify-center bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 disabled:opacity-50 transition-all shadow-md border-2 border-red-800 active:scale-95"
                     >
                       确认删除 ({selectedTaskIds.size})
                     </button>
@@ -159,7 +305,7 @@ export default function App() {
                         setIsBatchMode(false);
                         setSelectedTaskIds(new Set());
                       }}
-                      className="flex items-center justify-center bg-white text-slate-600 px-6 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 transition-all shadow-md border-2 border-slate-200 active:scale-95"
+                      className="flex items-center justify-center bg-white text-slate-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-50 transition-all shadow-md border-2 border-slate-200 active:scale-95"
                     >
                       取消
                     </button>
@@ -191,7 +337,7 @@ export default function App() {
                     key={cat.id}
                     onClick={() => setSelectedCategoryId(cat.id)}
                     className={cn(
-                      "px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all border-2",
+                      "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border-2",
                       selectedCategoryId === cat.id
                         ? "bg-blue-200 text-blue-900 border-blue-700 shadow-sm"
                         : "bg-white text-slate-700 border-slate-400 hover:border-slate-600 hover:bg-slate-50"

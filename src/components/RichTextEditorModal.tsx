@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Bold, Italic, Underline as UnderlineIcon, Highlighter, Palette, X, List, ListOrdered, Quote, Undo, Redo, Save, Strikethrough } from 'lucide-react';
+import { Bold, Italic, Underline as UnderlineIcon, Highlighter, Palette, X, List, ListOrdered, Quote, Undo, Redo, Save, Strikethrough, MoveDiagonal } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Color } from '@tiptap/extension-color';
@@ -72,12 +72,57 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
     onSave(editor.getHTML());
   };
 
+  const [size, setSize] = useState({ 
+    width: Math.min(672, window.innerWidth - 32), 
+    height: window.innerHeight * (window.innerWidth < 640 ? 0.45 : 0.6) 
+  });
+  const isResizing = useRef(false);
+  const startPos = useRef({ x: 0, y: 0 });
+  const startSize = useRef({ width: 0, height: 0 });
+
+  const handleResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    startPos.current = { x: clientX, y: clientY };
+    startSize.current = { ...size };
+    
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+    document.addEventListener('touchmove', handleResizeMove, { passive: false });
+    document.addEventListener('touchend', handleResizeEnd);
+  };
+
+  const handleResizeMove = (e: MouseEvent | TouchEvent) => {
+    if (!isResizing.current) return;
+    e.preventDefault();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    const deltaX = clientX - startPos.current.x;
+    const deltaY = clientY - startPos.current.y;
+    
+    setSize({
+      width: Math.max(300, Math.min(window.innerWidth - 32, startSize.current.width - deltaX * 2)),
+      height: Math.max(200, Math.min(window.innerHeight - 32, startSize.current.height + deltaY))
+    });
+  };
+
+  const handleResizeEnd = () => {
+    isResizing.current = false;
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
+    document.removeEventListener('touchmove', handleResizeMove);
+    document.removeEventListener('touchend', handleResizeEnd);
+  };
+
   const handlePickerToggle = (e: React.MouseEvent, type: 'color' | 'highlight') => {
     const rect = e.currentTarget.getBoundingClientRect();
     // Center the picker on the button, but keep it within screen bounds
     const centerX = rect.left + rect.width / 2;
     const safeX = Math.max(85, Math.min(window.innerWidth - 85, centerX));
-    setPickerPos({ top: rect.top, left: safeX });
+    setPickerPos({ top: rect.bottom, left: safeX });
     
     if (type === 'color') {
       setShowColorPicker(!showColorPicker);
@@ -95,8 +140,8 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
 
   const modalContent = (
     <div className="fixed inset-0 z-[9999] bg-black/60 flex items-start justify-center p-2 sm:p-4 backdrop-blur-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[45vh] sm:max-h-[90vh] border border-slate-200 animate-in slide-in-from-top-4 duration-200 mt-0 sm:mt-10">
-        <div className="flex items-center justify-between p-2 sm:p-4 border-b border-slate-100 bg-slate-50">
+      <div className="bg-white rounded-2xl shadow-2xl flex flex-col min-h-[30vh] max-h-[90vh] border border-slate-200 animate-in slide-in-from-top-4 duration-200 mt-0 sm:mt-10 overflow-hidden" style={{ width: size.width, height: size.height, minWidth: '300px', maxWidth: 'calc(100vw - 16px)' }}>
+        <div className="flex items-center justify-between p-2 sm:p-4 border-b border-slate-100 bg-slate-50 shrink-0">
           <h3 className="font-bold text-slate-800 text-xs sm:text-base">编辑笔记</h3>
           <div className="flex items-center gap-2">
             <button onClick={handleSave} className="px-3 py-1 text-[10px] sm:text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-all shadow-sm flex items-center gap-1">
@@ -228,8 +273,8 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
             {showColorPicker && (
               <div 
                 ref={colorPickerRef}
-                className="fixed z-[10000] mb-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 -translate-y-full select-none"
-                style={{ top: pickerPos.top - 8, left: pickerPos.left }}
+                className="fixed z-[10000] mt-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 select-none"
+                style={{ top: pickerPos.top, left: pickerPos.left }}
               >
                 {['#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280'].map(color => (
                   <button
@@ -266,8 +311,8 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
             {showHighlightPicker && (
               <div 
                 ref={highlightPickerRef}
-                className="fixed z-[10000] mb-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 -translate-y-full select-none"
-                style={{ top: pickerPos.top - 8, left: pickerPos.left }}
+                className="fixed z-[10000] mt-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 select-none"
+                style={{ top: pickerPos.top, left: pickerPos.left }}
               >
                 {['transparent', '#FEF08A', '#BFDBFE', '#BBF7D0', '#FECACA', '#E9D5FF', '#FBCFE8', '#E5E7EB'].map(color => (
                   <button
@@ -327,7 +372,18 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
           <EditorContent editor={editor} />
         </div>
 
-        <div className="p-4 border-t border-slate-100 bg-white flex justify-end gap-3">
+        <div className="p-4 pl-12 border-t border-slate-100 bg-white flex justify-end gap-3 shrink-0 relative">
+          {/* Custom Resize Handle at Bottom-Left */}
+          <div 
+            className="absolute bottom-0 left-0 w-12 h-12 flex items-end justify-start p-2 cursor-sw-resize z-50 group touch-none"
+            onMouseDown={handleResizeStart}
+            onTouchStart={handleResizeStart}
+          >
+            <div className="w-8 h-8 bg-slate-100 rounded-tr-xl rounded-bl-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shadow-sm border border-slate-200">
+              <MoveDiagonal className="w-4 h-4 rotate-90" />
+            </div>
+          </div>
+
           <button onClick={onClose} className="px-5 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
             取消
           </button>
