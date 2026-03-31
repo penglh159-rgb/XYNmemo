@@ -38,7 +38,7 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
     content: initialContent,
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose-base focus:outline-none max-w-none min-h-[200px] p-4 bg-white border border-slate-200 rounded-lg',
+        class: 'prose prose-sm sm:prose-base focus:outline-none max-w-none min-h-[200px] p-4 bg-white border border-slate-200 rounded-lg prose-p:my-0 prose-p:leading-normal',
       },
     },
     autofocus: false,
@@ -104,7 +104,7 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
     const deltaY = clientY - startPos.current.y;
     
     setSize({
-      width: Math.max(300, Math.min(window.innerWidth - 32, startSize.current.width - deltaX * 2)),
+      width: Math.max(300, Math.min(window.innerWidth - 32, startSize.current.width + deltaX * 2)),
       height: Math.max(200, Math.min(window.innerHeight - 32, startSize.current.height + deltaY))
     });
   };
@@ -144,10 +144,6 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
         <div className="flex items-center justify-between p-2 sm:p-4 border-b border-slate-100 bg-slate-50 shrink-0">
           <h3 className="font-bold text-slate-800 text-xs sm:text-base">编辑笔记</h3>
           <div className="flex items-center gap-2">
-            <button onClick={handleSave} className="px-3 py-1 text-[10px] sm:text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-all shadow-sm flex items-center gap-1">
-              <Save className="w-3 h-3 sm:w-4 h-4" />
-              保存
-            </button>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors">
               <X className="w-4 h-4 sm:w-5 h-5" />
             </button>
@@ -373,14 +369,14 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
         </div>
 
         <div className="p-4 pl-12 border-t border-slate-100 bg-white flex justify-end gap-3 shrink-0 relative">
-          {/* Custom Resize Handle at Bottom-Left */}
+          {/* Custom Resize Handle at Bottom-Right */}
           <div 
-            className="absolute bottom-0 left-0 w-12 h-12 flex items-end justify-start p-2 cursor-sw-resize z-50 group touch-none"
+            className="absolute bottom-1 right-1 w-8 h-8 flex items-end justify-end p-1 cursor-se-resize z-50 group touch-none"
             onMouseDown={handleResizeStart}
             onTouchStart={handleResizeStart}
           >
-            <div className="w-8 h-8 bg-slate-100 rounded-tr-xl rounded-bl-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shadow-sm border border-slate-200">
-              <MoveDiagonal className="w-4 h-4 rotate-90" />
+            <div className="w-5 h-5 bg-slate-100 rounded-tl-lg rounded-br-lg flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shadow-sm border border-slate-200">
+              <MoveDiagonal className="w-3 h-3" />
             </div>
           </div>
 

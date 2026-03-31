@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Circle, CheckCircle2, AlertCircle, PlayCircle, Mic, Square, Paperclip, FileText, Image as ImageIcon, Trash2, ChevronDown, ChevronUp, Tag, Plus, X as XIcon, Calendar, Clock, Download } from 'lucide-react';
@@ -242,11 +243,13 @@ const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId
     }
   };
 
-  const downloadSelectedAttachments = () => {
+  const downloadSelectedAttachments = async () => {
     if (selectedAttachments.length === 0) return;
     const selected = attachments.filter((a: any) => selectedAttachments.includes(a.id));
-    selected.forEach((attachment: any) => {
-      const url = URL.createObjectURL(attachment.file);
+    
+    if (selected.length === 1) {
+      const attachment = selected[0];
+      const url = URL.createObjectURL(attachment.data || attachment.file);
       const a = document.createElement('a');
       a.href = url;
       a.download = attachment.name;
@@ -254,7 +257,21 @@ const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    });
+    } else {
+      const zip = new JSZip();
+      selected.forEach((attachment: any) => {
+        zip.file(attachment.name, attachment.data || attachment.file);
+      });
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `vonote-attachments-${new Date().getTime()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
     setSelectedAttachments([]);
   };
 

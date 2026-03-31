@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { db, initDB, Category, Task } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LayoutGrid, ListTodo, Plus, Settings2, Download, Upload, AudioLines } from 'lucide-react';
+import { LayoutGrid, ListTodo, Plus, Settings2, Download, Upload, AudioLines, ChevronDown, Trash2 } from 'lucide-react';
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -115,7 +115,13 @@ export default function App() {
       };
 
       const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
-      const filename = `vonote-backup-${new Date().toISOString().split('T')[0]}.json`;
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const filename = `vonote-backup-${year}${month}${day}-${hours}${minutes}.json`;
       
       if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'application/json' })] })) {
         try {
@@ -342,17 +348,15 @@ export default function App() {
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-700 bg-slate-200 px-3 py-1.5 rounded-lg border-2 border-slate-300">
-                      已选中({selectedTaskIds.size})
-                    </span>
                     <div className="relative group">
                       <button
                         disabled={selectedTaskIds.size === 0}
-                        className="flex items-center justify-center bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md border-2 border-blue-800 active:scale-95"
+                        className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md border-2 border-blue-800 active:scale-95"
                       >
-                        移动到
+                        已选中({selectedTaskIds.size}) <ChevronDown className="w-3 h-3" />
                       </button>
                       <div className="absolute top-full left-0 mt-1 hidden group-hover:block z-50 bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[150px]">
+                        <div className="text-[10px] font-bold text-slate-400 mb-1 px-2">移动到分类</div>
                         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
                           {categories.map(c => (
                             <button
@@ -365,15 +369,15 @@ export default function App() {
                             </button>
                           ))}
                         </div>
+                        <div className="h-px bg-slate-100 my-1"></div>
+                        <button
+                          onClick={handleBatchDelete}
+                          className="w-full text-left px-2 py-1.5 rounded text-[11px] text-red-600 hover:bg-red-50 font-bold flex items-center gap-2"
+                        >
+                          <Trash2 className="w-3 h-3" /> 删除选中项
+                        </button>
                       </div>
                     </div>
-                    <button
-                      onClick={handleBatchDelete}
-                      disabled={selectedTaskIds.size === 0}
-                      className="flex items-center justify-center bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 disabled:opacity-50 transition-all shadow-md border-2 border-red-800 active:scale-95"
-                    >
-                      删除
-                    </button>
                     <button
                       onClick={() => {
                         setIsBatchMode(false);
