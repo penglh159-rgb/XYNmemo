@@ -4,6 +4,7 @@ export interface Category {
   id: string;
   name: string;
   color: string;
+  order?: number;
 }
 
 export type TaskStatus = 'todo' | 'in-progress' | 'blocked' | 'done';
@@ -30,6 +31,7 @@ export interface Task {
   tags?: string[];
   order: number;
   blockedReason?: string;
+  customFields?: Record<string, any>;
 }
 
 export class ProgressMemoDB extends Dexie {

@@ -1,11 +1,132 @@
 import { useState } from 'react';
 import { db, Category } from '../db';
-import { X, Plus, Trash2, Edit2, Check } from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Check, GripVertical } from 'lucide-react';
 import { cn } from '../lib/utils';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface CategoryManagerModalProps {
   categories: Category[];
   onClose: () => void;
+}
+
+function SortableCategoryItem({ 
+  category, 
+  editingId, 
+  editName, 
+  editColor, 
+  setEditColor, 
+  setEditName, 
+  handleUpdate, 
+  setEditingId, 
+  handleDelete 
+}: {
+  category: Category;
+  editingId: string | null;
+  editName: string;
+  editColor: string;
+  setEditColor: (c: string) => void;
+  setEditName: (n: string) => void;
+  handleUpdate: (id: string) => void;
+  setEditingId: (id: string | null) => void;
+  handleDelete: (id: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm group",
+        isDragging && "opacity-50 shadow-md border-blue-300"
+      )}
+    >
+      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500 rounded">
+        <GripVertical className="w-4 h-4" />
+      </div>
+      
+      {editingId === category.id ? (
+        <>
+          <input
+            type="color"
+            value={editColor}
+            onChange={(e) => setEditColor(e.target.value)}
+            className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+          />
+          <input
+            autoFocus
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            className="flex-1 text-sm border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20"
+            onKeyDown={(e) => e.key === 'Enter' && handleUpdate(category.id)}
+          />
+          <button onClick={() => handleUpdate(category.id)} className="text-green-600 hover:bg-green-50 p-1 rounded">
+            <Check className="w-4 h-4" />
+          </button>
+          <button onClick={() => setEditingId(null)} className="text-slate-400 hover:bg-slate-100 p-1 rounded">
+            <X className="w-4 h-4" />
+          </button>
+        </>
+      ) : (
+        <>
+          <div
+            className="w-4 h-4 rounded-full flex-shrink-0"
+            style={{ backgroundColor: category.color }}
+          />
+          <span className="flex-1 text-sm font-medium text-slate-700">{category.name}</span>
+          
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={() => {
+                setEditingId(category.id);
+                setEditName(category.name);
+                setEditColor(category.color || '#3B82F6');
+              }}
+              className="p-1.5 text-slate-400 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-md transition-colors"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => handleDelete(category.id)}
+              className="p-1.5 text-slate-400 hover:text-red-600 bg-slate-50 hover:bg-red-50 rounded-md transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export function CategoryManagerModal({ categories, onClose }: CategoryManagerModalProps) {
@@ -15,6 +136,29 @@ export function CategoryManagerModal({ categories, onClose }: CategoryManagerMod
 
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('#3B82F6');
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = categories.findIndex((i) => i.id === active.id);
+      const newIndex = categories.findIndex((i) => i.id === over.id);
+      const newCategories = arrayMove(categories, oldIndex, newIndex);
+      
+      // Update order in database
+      await Promise.all(
+        newCategories.map((cat, index) => 
+          db.categories.update(cat.id, { order: index })
+        )
+      );
+    }
+  };
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
@@ -73,55 +217,31 @@ export function CategoryManagerModal({ categories, onClose }: CategoryManagerMod
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
-          {categories.map(cat => (
-            <div key={cat.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-              {editingId === cat.id ? (
-                <>
-                  <input
-                    type="color"
-                    value={editColor}
-                    onChange={(e) => setEditColor(e.target.value)}
-                    className="w-8 h-8 rounded cursor-pointer border-0 p-0"
-                  />
-                  <input
-                    autoFocus
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="flex-1 text-sm border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20"
-                    onKeyDown={(e) => e.key === 'Enter' && handleUpdate(cat.id)}
-                  />
-                  <button onClick={() => handleUpdate(cat.id)} className="text-green-600 hover:bg-green-50 p-1 rounded">
-                    <Check className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => setEditingId(null)} className="text-slate-400 hover:bg-slate-100 p-1 rounded">
-                    <X className="w-4 h-4" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cat.color }} />
-                  <span className="flex-1 text-sm font-medium text-slate-700">{cat.name}</span>
-                  <button 
-                    onClick={() => {
-                      setEditingId(cat.id);
-                      setEditName(cat.name);
-                      setEditColor(cat.color);
-                    }} 
-                    className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(cat.id)} 
-                    className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={categories.map(c => c.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {categories.map(cat => (
+                <SortableCategoryItem
+                  key={cat.id}
+                  category={cat}
+                  editingId={editingId}
+                  editName={editName}
+                  editColor={editColor}
+                  setEditColor={setEditColor}
+                  setEditName={setEditName}
+                  handleUpdate={handleUpdate}
+                  setEditingId={setEditingId}
+                  handleDelete={handleDelete}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           {categories.length === 0 && (
             <div className="text-center text-slate-500 text-sm py-8">暂无分类</div>
           )}

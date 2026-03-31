@@ -9,6 +9,353 @@ import { format } from 'date-fns';
 import { RichTextEditorModal } from './RichTextEditorModal';
 import { ImageViewerModal } from './ImageViewerModal';
 
+const AudioCell = ({ task, colId }: { task: Task, colId: string }) => {
+  const isMain = colId === 'audio';
+  const audioBlob = isMain ? task.audioBlob : task.customFields?.[colId];
+
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [isAudioPopoverOpen, setIsAudioPopoverOpen] = useState(false);
+
+  useEffect(() => {
+    if (audioBlob) {
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setAudioUrl(null);
+    }
+  }, [audioBlob]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const newBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (isMain) {
+          await db.tasks.update(task.id, { audioBlob: newBlob });
+        } else {
+          await db.tasks.update(task.id, {
+            customFields: { ...(task.customFields || {}), [colId]: newBlob }
+          });
+        }
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      alert('无法访问麦克风，请检查权限设置。');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center relative" style={{ gridRow: 1 }}>
+      <button 
+        onClick={() => setIsAudioPopoverOpen(!isAudioPopoverOpen)}
+        className={cn(
+          "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm border",
+          isRecording ? "bg-red-500 text-white animate-pulse border-red-600" :
+          audioUrl ? "bg-blue-100 text-blue-600 border-blue-200 hover:bg-blue-200" :
+          "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600"
+        )}
+      >
+        {isRecording ? <Square className="w-4 h-4 fill-current" /> :
+         audioUrl ? <PlayCircle className="w-5 h-5" /> :
+         <Mic className="w-4 h-4" />}
+      </button>
+
+      {isAudioPopoverOpen && (
+        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 min-w-[240px] animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-500">录音控制</span>
+            <button onClick={() => setIsAudioPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">×</button>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {isRecording ? (
+              <button onClick={stopRecording} className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition-colors shadow-sm">
+                <Square className="w-4 h-4 fill-current" />
+                <span className="text-xs font-bold">停止录音</span>
+              </button>
+            ) : !audioUrl ? (
+              <button onClick={startRecording} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <Mic className="w-4 h-4" />
+                <span className="text-xs font-bold">开始录音</span>
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2 w-full">
+                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-2 border border-slate-100">
+                  <button onClick={togglePlay} className="text-blue-600 hover:text-blue-700">
+                    {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <PlayCircle className="w-5 h-5" />}
+                  </button>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={progress}
+                    onChange={(e) => {
+                      if (audioRef.current) {
+                        const time = (Number(e.target.value) / 100) * audioRef.current.duration;
+                        audioRef.current.currentTime = time;
+                        setProgress(Number(e.target.value));
+                      }
+                    }}
+                    className="flex-1 h-1 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <audio 
+                    ref={audioRef} 
+                    src={audioUrl} 
+                    onTimeUpdate={(e) => {
+                      const target = e.target as HTMLAudioElement;
+                      setProgress((target.currentTime / target.duration) * 100 || 0);
+                    }}
+                    onEnded={() => setIsPlaying(false)}
+                    className="hidden" 
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      if (window.confirm('确定删除录音吗？')) {
+                        if (isMain) {
+                          await db.tasks.update(task.id, { audioBlob: undefined });
+                        } else {
+                          const newCustomFields = { ...task.customFields };
+                          delete newCustomFields[colId];
+                          await db.tasks.update(task.id, { customFields: newCustomFields });
+                        }
+                        setAudioUrl(null);
+                      }
+                    }}
+                    className="flex-1 text-[10px] font-bold text-red-500 hover:bg-red-50 py-1 rounded transition-colors"
+                  >
+                    删除录音
+                  </button>
+                  <button 
+                    onClick={startRecording}
+                    className="flex-1 text-[10px] font-bold text-blue-600 hover:bg-blue-50 py-1 rounded transition-colors"
+                  >
+                    重新录制
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId: string, setPreviewImageUrl: (url: string) => void }) => {
+  const isMain = colId === 'attachments';
+  const attachments = isMain ? (task.attachments || []) : (task.customFields?.[colId] || []);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isManagingAttachments, setIsManagingAttachments] = useState(false);
+  const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newAttachments = Array.from(files).map(file => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      data: file
+    }));
+
+    const updatedAttachments = [...attachments, ...newAttachments];
+    if (isMain) {
+      await db.tasks.update(task.id, { attachments: updatedAttachments });
+    } else {
+      await db.tasks.update(task.id, {
+        customFields: { ...(task.customFields || {}), [colId]: updatedAttachments }
+      });
+    }
+    
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const toggleAttachmentSelection = (id: string) => {
+    setSelectedAttachments(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const deleteSelectedAttachments = async () => {
+    if (selectedAttachments.length === 0) return;
+    if (window.confirm(`确定删除选中的 ${selectedAttachments.length} 个附件吗？`)) {
+      const remaining = attachments.filter((a: any) => !selectedAttachments.includes(a.id));
+      if (isMain) {
+        await db.tasks.update(task.id, { attachments: remaining });
+      } else {
+        await db.tasks.update(task.id, {
+          customFields: { ...(task.customFields || {}), [colId]: remaining }
+        });
+      }
+      setSelectedAttachments([]);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap" style={{ gridRow: 1 }}>
+      {attachments.slice(0, 3).map((att: any) => {
+        const isImage = att.type.startsWith('image/');
+        const url = URL.createObjectURL(att.data);
+        return (
+          <div 
+            key={att.id} 
+            className="w-6 h-6 rounded bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer hover:bg-slate-200 overflow-hidden relative group/att" 
+            title={att.name}
+            onClick={() => {
+              if (isImage) {
+                setPreviewImageUrl(url);
+              } else {
+                window.open(url, '_blank');
+              }
+            }}
+          >
+            {isImage ? (
+              <img src={url} alt={att.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <FileText className="w-3 h-3 text-slate-500" />
+            )}
+          </div>
+        );
+      })}
+      {attachments.length > 3 && (
+        <button 
+          onClick={() => setIsManagingAttachments(true)}
+          className="text-[10px] text-slate-400 hover:text-blue-500 px-1"
+        >
+          +{attachments.length - 3}
+        </button>
+      )}
+      <div className="flex items-center gap-1">
+        <button 
+          onClick={() => fileInputRef.current?.click()}
+          className="w-6 h-6 rounded border border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-colors"
+          title="添加附件"
+        >
+          <Paperclip className="w-3 h-3" />
+        </button>
+        {attachments.length > 0 && (
+          <button 
+            onClick={() => setIsManagingAttachments(true)}
+            className="w-6 h-6 rounded border border-slate-200 flex items-center justify-center text-slate-400 hover:text-blue-500 transition-colors"
+            title="管理附件"
+          >
+            <FileText className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        className="hidden" 
+        multiple
+        accept="*/*"
+      />
+
+      {isManagingAttachments && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">管理附件</h3>
+              <button onClick={() => setIsManagingAttachments(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100">
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+              {attachments.map((att: any) => (
+                <div key={att.id} className="flex items-center gap-3 p-2 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedAttachments.includes(att.id)}
+                    onChange={() => toggleAttachmentSelection(att.id)}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center shrink-0">
+                    {att.type.startsWith('image/') ? (
+                      <img src={URL.createObjectURL(att.data)} alt={att.name} className="w-full h-full object-cover rounded" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-slate-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-700 truncate">{att.name}</div>
+                    <div className="text-xs text-slate-400">{(att.size / 1024).toFixed(1)} KB</div>
+                  </div>
+                </div>
+              ))}
+              {attachments.length === 0 && (
+                <div className="text-center py-8 text-slate-400 text-sm">暂无附件</div>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+              <span className="text-xs text-slate-500">已选择 {selectedAttachments.length} 个附件</span>
+              <div className="flex gap-2">
+                <button 
+                  onClick={deleteSelectedAttachments}
+                  disabled={selectedAttachments.length === 0}
+                  className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  删除选中
+                </button>
+                <button 
+                  onClick={() => setIsManagingAttachments(false)}
+                  className="px-4 py-2 bg-white text-slate-600 text-sm font-bold rounded-lg hover:bg-slate-50 border border-slate-200 transition-colors shadow-sm"
+                >
+                  完成
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface TaskRowProps {
   task: Task;
   categories: Category[];
@@ -51,14 +398,25 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
     setBlockedReason(task.blockedReason || '');
   }, [task.blockedReason]);
 
-  const [isEditingRichText, setIsEditingRichText] = useState(false);
+  const [editingRichTextColId, setEditingRichTextColId] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isBlockedReasonExpanded, setIsBlockedReasonExpanded] = useState(false);
   const [isAudioPopoverOpen, setIsAudioPopoverOpen] = useState(false);
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [newTagInput, setNewTagInput] = useState('');
+  const [isEditingCustom, setIsEditingCustom] = useState<Record<string, boolean>>({});
+  const [customFields, setCustomFields] = useState<Record<string, string>>(task.customFields || {});
+  
+  useEffect(() => {
+    setCustomFields(task.customFields || {});
+  }, [task.customFields]);
+
+  const [isCategorySelectOpen, setIsCategorySelectOpen] = useState(false);
+  const [isTagsExpanded, setIsTagsExpanded] = useState(false);
+  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
   const tagInputRef = useRef<HTMLInputElement>(null);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
+  const categoryPopoverRef = useRef<HTMLDivElement>(null);
 
   const allExistingTags = useLiveQuery(async () => {
     const tasks = await db.tasks.toArray();
@@ -72,12 +430,15 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
       if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
         setIsAddingTag(false);
       }
+      if (categoryPopoverRef.current && !categoryPopoverRef.current.contains(event.target as Node)) {
+        setIsCategorySelectOpen(false);
+      }
     };
-    if (isAddingTag) {
+    if (isAddingTag || isCategorySelectOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isAddingTag]);
+  }, [isAddingTag, isCategorySelectOpen]);
 
   const {
     attributes,
@@ -91,7 +452,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 50 : (isAddingTag || isAudioPopoverOpen ? 40 : 1),
+    zIndex: isDragging ? 9999 : (isAddingTag || isAudioPopoverOpen || isCategorySelectOpen ? 9998 : 1),
   };
 
   const handleStatusClick = async () => {
@@ -156,107 +517,18 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
     await db.tasks.update(task.id, { time: e.target.value });
   };
 
-  // Audio recording logic
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    if (task.audioBlob) {
-      const url = URL.createObjectURL(task.audioBlob);
-      setAudioUrl(url);
-      return () => URL.revokeObjectURL(url);
-    }
-  }, [task.audioBlob]);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await db.tasks.update(task.id, { audioBlob });
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      alert('无法访问麦克风，请检查权限设置。');
-    }
+  const handleCustomFieldChange = (colId: string, value: string) => {
+    setCustomFields(prev => ({ ...prev, [colId]: value }));
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const togglePlay = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  // File upload logic
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const newAttachments = Array.from(files).map(file => ({
-      id: crypto.randomUUID(),
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      data: file
-    }));
-
+  const handleCustomFieldBlur = async (colId: string) => {
+    setIsEditingCustom(prev => ({ ...prev, [colId]: false }));
     await db.tasks.update(task.id, {
-      attachments: [...(task.attachments || []), ...newAttachments]
+      customFields: {
+        ...(task.customFields || {}),
+        [colId]: customFields[colId]
+      }
     });
-    
-    // Reset input
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const [isManagingAttachments, setIsManagingAttachments] = useState(false);
-  const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
-
-  const toggleAttachmentSelection = (id: string) => {
-    setSelectedAttachments(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-  };
-
-  const deleteSelectedAttachments = async () => {
-    if (selectedAttachments.length === 0) return;
-    if (window.confirm(`确定删除选中的 ${selectedAttachments.length} 个附件吗？`)) {
-      const remaining = (task.attachments || []).filter(a => !selectedAttachments.includes(a.id));
-      await db.tasks.update(task.id, { attachments: remaining });
-      setSelectedAttachments([]);
-    }
   };
 
   const statusIndex = columns.findIndex(c => c.id === 'status');
@@ -325,59 +597,99 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
                 >
                   {statusLabels[task.status]}
                 </button>
-                <button
-                  onClick={async () => {
-                    if (window.confirm('确定删除该事项吗？')) {
-                      await db.tasks.delete(task.id);
-                    }
-                  }}
-                  className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover/row:opacity-100 transition-opacity"
-                  title="删除事项"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
               </div>
             );
           }
 
           if (col.id === 'title') {
             return (
-              <div key={col.id} className="relative group pt-4" style={{ gridRow: 1 }}>
-                {category && (
-                  <span 
-                    className="absolute -top-1 -left-1 text-[9px] px-1.5 py-0.5 rounded-sm text-white font-bold opacity-90 shadow-sm z-10"
-                    style={{ backgroundColor: category.color }}
-                  >
-                    {category.name}
-                  </span>
-                )}
-                
-                <div className="absolute -top-1 -right-1 flex flex-wrap justify-end gap-1 max-w-[70%] z-10">
-                  {task.tags?.map(tag => (
-                    <span 
-                      key={tag}
-                      onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }}
-                      className="text-[9px] px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-500 border border-slate-200 font-medium cursor-pointer hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                      title="点击删除标签"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
+              <div key={col.id} className="relative group flex flex-col gap-1" style={{ gridRow: 1 }}>
+                <div className="flex justify-between items-start gap-2 min-h-[20px]">
                   <div className="relative">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setIsAddingTag(!isAddingTag); }}
-                      className="text-[9px] px-2 py-0.5 rounded-sm bg-blue-50 text-blue-700 border border-blue-200 font-bold hover:bg-blue-100 transition-all shadow-sm flex items-center justify-center min-w-[20px]"
-                      title="添加标签"
-                    >
-                      +
-                    </button>
-                    
-                    {isAddingTag && (
-                      <div 
-                        ref={tagPopoverRef}
-                        className="absolute top-full right-0 mt-1 z-50 bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[160px] animate-in fade-in slide-in-from-top-1"
-                        onClick={(e) => e.stopPropagation()}
+                    {category && (
+                      <button 
+                        onClick={() => setIsCategorySelectOpen(true)}
+                        className="text-[9px] px-1.5 py-0.5 rounded-sm text-white font-bold opacity-90 shadow-sm hover:opacity-100 hover:scale-105 transition-all"
+                        style={{ backgroundColor: category.color }}
+                        title="点击更改分类"
                       >
+                        {category.name}
+                      </button>
+                    )}
+                    
+                    {isCategorySelectOpen && (
+                      <div 
+                        ref={categoryPopoverRef}
+                        className="absolute top-full left-0 mt-1 z-[100] bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[150px]"
+                      >
+                        <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-100">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">更改分类</span>
+                          <button onClick={() => setIsCategorySelectOpen(false)} className="text-slate-400 hover:text-slate-600">
+                            <XIcon className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                          {categories.map(c => (
+                            <button
+                              key={c.id}
+                              onClick={async () => {
+                                await db.tasks.update(task.id, { categoryId: c.id });
+                                setIsCategorySelectOpen(false);
+                              }}
+                              className="text-left px-2 py-1.5 rounded text-[11px] hover:bg-slate-100 transition-colors flex items-center gap-2"
+                            >
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                              {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-1 flex-1 min-w-0">
+                    {task.tags && task.tags.length > 0 && (
+                      <>
+                        {(isTagsExpanded ? task.tags : task.tags.slice(0, 2)).map(tag => (
+                          <span 
+                            key={tag}
+                            className="text-[9px] pl-1.5 pr-1 py-0.5 rounded-sm bg-slate-100 text-slate-500 border border-slate-200 font-medium flex items-center gap-0.5 max-w-full"
+                          >
+                            <span className="truncate">#{tag}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }}
+                              className="text-slate-400 hover:text-red-500 hover:bg-red-50 rounded p-0.5 transition-colors shrink-0"
+                              title="删除标签"
+                            >
+                              <XIcon className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        ))}
+                        {task.tags.length > 2 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setIsTagsExpanded(!isTagsExpanded); }}
+                            className="text-[9px] px-1.5 py-0.5 rounded-sm bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100 transition-colors shrink-0"
+                          >
+                            {isTagsExpanded ? '收起' : `+${task.tags.length - 2}`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <div className="relative shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setIsAddingTag(!isAddingTag); }}
+                        className="text-[9px] px-2 py-0.5 rounded-sm bg-blue-50 text-blue-700 border border-blue-200 font-bold hover:bg-blue-100 transition-all shadow-sm flex items-center justify-center min-w-[20px]"
+                        title="添加标签"
+                      >
+                        +
+                      </button>
+                      
+                      {isAddingTag && (
+                        <div 
+                          ref={tagPopoverRef}
+                          className="absolute top-full right-0 mt-1 z-[100] bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[160px] animate-in fade-in slide-in-from-top-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                         <div className="flex items-center gap-1 mb-2">
                           <input
                             ref={tagInputRef}
@@ -420,6 +732,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
                       </div>
                     )}
                   </div>
+                </div>
                 </div>
 
                 {isEditingTitle ? (
@@ -466,134 +779,75 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
           }
 
 
-          if (col.id === 'audio') {
-            return (
-              <div key={col.id} className="flex items-center justify-center relative" style={{ gridRow: 1 }}>
-                <button 
-                  onClick={() => setIsAudioPopoverOpen(!isAudioPopoverOpen)}
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm border",
-                    isRecording ? "bg-red-500 text-white animate-pulse border-red-600" :
-                    audioUrl ? "bg-blue-100 text-blue-600 border-blue-200 hover:bg-blue-200" :
-                    "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600"
-                  )}
-                >
-                  {isRecording ? <Square className="w-4 h-4 fill-current" /> :
-                   audioUrl ? <PlayCircle className="w-5 h-5" /> :
-                   <Mic className="w-4 h-4" />}
-                </button>
-
-                {isAudioPopoverOpen && (
-                  <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 min-w-[240px] animate-in fade-in slide-in-from-top-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-slate-500">录音控制</span>
-                      <button onClick={() => setIsAudioPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">×</button>
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                      {isRecording ? (
-                        <button onClick={stopRecording} className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition-colors shadow-sm">
-                          <Square className="w-4 h-4 fill-current" />
-                          <span className="text-xs font-bold">停止录音</span>
-                        </button>
-                      ) : !audioUrl ? (
-                        <button onClick={startRecording} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                          <Mic className="w-4 h-4" />
-                          <span className="text-xs font-bold">开始录音</span>
-                        </button>
-                      ) : (
-                        <div className="flex flex-col gap-2 w-full">
-                          <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-2 border border-slate-100">
-                            <button onClick={togglePlay} className="text-blue-600 hover:text-blue-700">
-                              {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <PlayCircle className="w-5 h-5" />}
-                            </button>
-                            <input 
-                              type="range" 
-                              min="0" 
-                              max="100" 
-                              value={progress}
-                              onChange={(e) => {
-                                if (audioRef.current) {
-                                  const time = (Number(e.target.value) / 100) * audioRef.current.duration;
-                                  audioRef.current.currentTime = time;
-                                  setProgress(Number(e.target.value));
-                                }
-                              }}
-                              className="flex-1 h-1 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                            />
-                            <audio 
-                              ref={audioRef} 
-                              src={audioUrl} 
-                              onTimeUpdate={(e) => {
-                                const target = e.target as HTMLAudioElement;
-                                setProgress((target.currentTime / target.duration) * 100 || 0);
-                              }}
-                              onEnded={() => setIsPlaying(false)}
-                              className="hidden" 
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={async () => {
-                                if (window.confirm('确定删除录音吗？')) {
-                                  await db.tasks.update(task.id, { audioBlob: undefined });
-                                  setAudioUrl(null);
-                                }
-                              }}
-                              className="flex-1 text-[10px] font-bold text-red-500 hover:bg-red-50 py-1 rounded transition-colors"
-                            >
-                              删除录音
-                            </button>
-                            <button 
-                              onClick={startRecording}
-                              className="flex-1 text-[10px] font-bold text-blue-600 hover:bg-blue-50 py-1 rounded transition-colors"
-                            >
-                              重新录制
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
+          if (col.id.startsWith('audio')) {
+            return <AudioCell key={col.id} task={task} colId={col.id} />;
           }
 
-          if (col.id === 'shortNote') {
+          if (col.id.startsWith('shortNote')) {
+            const isMainNote = col.id === 'shortNote';
+            const noteValue = isMainNote ? shortNote : (customFields[col.id] || '');
+            const isEditing = isMainNote ? isEditingNote : isEditingCustom[col.id];
+            const isExpanded = expandedNotes[col.id];
+            
             return (
-              <div key={col.id} className="flex flex-col gap-1" style={{ gridRow: 1 }}>
-                {isEditingNote ? (
+              <div key={col.id} className="flex flex-col gap-1 relative group/note" style={{ gridRow: 1 }}>
+                {isEditing ? (
                   <textarea
                     autoFocus
-                    value={shortNote}
-                    onChange={(e) => setShortNote(e.target.value)}
-                    onBlur={handleNoteBlur}
-                    className="w-full text-xs bg-yellow-50 border-yellow-200 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-yellow-500/20 resize-none"
-                    rows={2}
+                    value={noteValue}
+                    onChange={(e) => {
+                      if (isMainNote) setShortNote(e.target.value);
+                      else handleCustomFieldChange(col.id, e.target.value);
+                    }}
+                    onBlur={() => {
+                      if (isMainNote) handleNoteBlur();
+                      else handleCustomFieldBlur(col.id);
+                    }}
+                    className="w-full text-xs bg-yellow-50 border-yellow-200 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-yellow-500/20 resize-none min-h-[60px]"
                   />
                 ) : (
-                  <div 
-                    onDoubleClick={() => setIsEditingNote(true)}
-                    className="text-xs text-slate-600 break-words cursor-text p-1 rounded hover:bg-slate-100 line-clamp-2"
-                  >
-                    {task.shortNote || <span className="text-slate-400 italic">添加短注...</span>}
+                  <div className="relative">
+                    <div 
+                      onDoubleClick={() => {
+                        if (isMainNote) setIsEditingNote(true);
+                        else setIsEditingCustom(prev => ({ ...prev, [col.id]: true }));
+                      }}
+                      className={cn(
+                        "text-xs text-slate-600 break-words cursor-text p-1 rounded hover:bg-slate-100 whitespace-pre-wrap",
+                        !isExpanded && "line-clamp-2"
+                      )}
+                    >
+                      {(isMainNote ? task.shortNote : customFields[col.id]) || <span className="text-slate-400 italic">添加短注...</span>}
+                    </div>
+                    {((isMainNote ? task.shortNote : customFields[col.id])?.length || 0) > 40 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedNotes(prev => ({ ...prev, [col.id]: !prev[col.id] }));
+                        }}
+                        className="absolute bottom-0 right-0 bg-blue-100 px-2 py-0.5 rounded-tl-md text-[10px] font-bold text-blue-700 hover:bg-blue-200 hover:text-blue-800 opacity-0 group-hover/note:opacity-100 transition-all shadow-sm border-t border-l border-blue-200"
+                      >
+                        {isExpanded ? '收起' : '展开'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             );
           }
 
-          if (col.id === 'notes') {
+          if (col.id.startsWith('notes')) {
+            const isMain = col.id === 'notes';
+            const val = isMain ? task.notes : customFields[col.id];
             return (
               <div 
                 key={col.id}
-                onClick={() => setIsEditingRichText(true)}
+                onClick={() => setEditingRichTextColId(col.id)}
                 className="text-xs text-slate-500 line-clamp-2 cursor-pointer hover:text-slate-700 p-1 rounded hover:bg-slate-100"
                 style={{ gridRow: 1 }}
               >
-                {task.notes ? (
-                  <div dangerouslySetInnerHTML={{ __html: task.notes }} />
+                {val ? (
+                  <div dangerouslySetInnerHTML={{ __html: val }} />
                 ) : (
                   <span className="italic">点击编辑笔记...</span>
                 )}
@@ -601,66 +855,30 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
             );
           }
 
-          if (col.id === 'attachments') {
+          if (col.id.startsWith('attachments')) {
+            return <AttachmentCell key={col.id} task={task} colId={col.id} setPreviewImageUrl={setPreviewImageUrl} />;
+          }
+
+          if (col.id.startsWith('custom_')) {
             return (
-              <div key={col.id} className="flex items-center gap-1 flex-wrap" style={{ gridRow: 1 }}>
-                {task.attachments?.slice(0, 3).map(att => {
-                  const isImage = att.type.startsWith('image/');
-                  const url = URL.createObjectURL(att.data);
-                  return (
-                    <div 
-                      key={att.id} 
-                      className="w-6 h-6 rounded bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer hover:bg-slate-200 overflow-hidden relative group/att" 
-                      title={att.name}
-                      onClick={() => {
-                        if (isImage) {
-                          setPreviewImageUrl(url);
-                        } else {
-                          window.open(url, '_blank');
-                        }
-                      }}
-                    >
-                      {isImage ? (
-                        <img src={url} alt={att.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <FileText className="w-3 h-3 text-slate-500" />
-                      )}
-                    </div>
-                  );
-                })}
-                {task.attachments && task.attachments.length > 3 && (
-                  <button 
-                    onClick={() => setIsManagingAttachments(true)}
-                    className="text-[10px] text-slate-400 hover:text-blue-500 px-1"
+              <div key={col.id} className="flex flex-col gap-1" style={{ gridRow: 1 }}>
+                {isEditingCustom[col.id] ? (
+                  <textarea
+                    autoFocus
+                    value={customFields[col.id] || ''}
+                    onChange={(e) => handleCustomFieldChange(col.id, e.target.value)}
+                    onBlur={() => handleCustomFieldBlur(col.id)}
+                    className="w-full text-xs bg-yellow-50 border-yellow-200 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-yellow-500/20 resize-none"
+                    rows={2}
+                  />
+                ) : (
+                  <div 
+                    onDoubleClick={() => setIsEditingCustom(prev => ({ ...prev, [col.id]: true }))}
+                    className="text-xs text-slate-600 break-words cursor-text p-1 rounded hover:bg-slate-100 line-clamp-2 min-h-[24px]"
                   >
-                    +{task.attachments.length - 3}
-                  </button>
+                    {customFields[col.id] || <span className="text-slate-400 italic">添加内容...</span>}
+                  </div>
                 )}
-                <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-6 h-6 rounded border border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-colors"
-                    title="添加附件"
-                  >
-                    <Paperclip className="w-3 h-3" />
-                  </button>
-                  {task.attachments && task.attachments.length > 0 && (
-                    <button 
-                      onClick={() => setIsManagingAttachments(true)}
-                      className="w-6 h-6 rounded border border-slate-200 flex items-center justify-center text-slate-400 hover:text-blue-500 transition-colors"
-                      title="管理附件"
-                    >
-                      <FileText className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleFileUpload} 
-                  className="hidden" 
-                  multiple
-                />
               </div>
             );
           }
@@ -768,14 +986,19 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
         </div>
       )}
 
-      {isEditingRichText && (
+      {editingRichTextColId && (
         <RichTextEditorModal
-          initialContent={task.notes || ''}
+          initialContent={editingRichTextColId === 'notes' ? (task.notes || '') : (customFields[editingRichTextColId] || '')}
           onSave={async (content) => {
-            await db.tasks.update(task.id, { notes: content });
-            setIsEditingRichText(false);
+            if (editingRichTextColId === 'notes') {
+              await db.tasks.update(task.id, { notes: content });
+            } else {
+              setCustomFields(prev => ({ ...prev, [editingRichTextColId]: content }));
+              await db.tasks.update(task.id, { customFields: { ...task.customFields, [editingRichTextColId]: content } });
+            }
+            setEditingRichTextColId(null);
           }}
-          onClose={() => setIsEditingRichText(false)}
+          onClose={() => setEditingRichTextColId(null)}
         />
       )}
 

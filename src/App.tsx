@@ -31,7 +31,7 @@ export default function App() {
   const [isBatchMode, setIsBatchMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const categories = useLiveQuery(() => db.categories.toArray()) || [];
+  const categories = useLiveQuery(() => db.categories.toArray().then(cats => cats.sort((a, b) => (a.order || 0) - (b.order || 0)))) || [];
 
   useEffect(() => {
     initDB();
@@ -61,7 +61,17 @@ export default function App() {
     if (window.confirm(`确定删除选中的 ${selectedTaskIds.size} 个事项吗？`)) {
       await db.tasks.bulkDelete(Array.from(selectedTaskIds));
       setSelectedTaskIds(new Set());
+      setIsBatchMode(false);
     }
+  };
+
+  const handleBatchMoveCategory = async (newCategoryId: string) => {
+    if (selectedTaskIds.size === 0) return;
+    await Promise.all(
+      Array.from(selectedTaskIds).map(id => db.tasks.update(id, { categoryId: newCategoryId }))
+    );
+    setSelectedTaskIds(new Set());
+    setIsBatchMode(false);
   };
 
   const handleBackup = async () => {
@@ -80,6 +90,19 @@ export default function App() {
             data: await blobToBase64(att.data)
           })));
         }
+        if (task.customFields) {
+          processedTask.customFields = { ...task.customFields };
+          for (const [key, value] of Object.entries(task.customFields)) {
+            if (key.startsWith('audio_') && value instanceof Blob) {
+              processedTask.customFields[key] = await blobToBase64(value);
+            } else if (key.startsWith('attachments_') && Array.isArray(value)) {
+              processedTask.customFields[key] = await Promise.all(value.map(async (att: any) => ({
+                ...att,
+                data: await blobToBase64(att.data)
+              })));
+            }
+          }
+        }
         return processedTask;
       }));
 
@@ -92,14 +115,31 @@ export default function App() {
       };
 
       const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `progress-memo-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const filename = `progress-memo-backup-${new Date().toISOString().split('T')[0]}.json`;
+      
+      if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'application/json' })] })) {
+        try {
+          await navigator.share({
+            files: [new File([blob], filename, { type: 'application/json' })],
+            title: '进度备忘备份文件',
+          });
+          return;
+        } catch (shareError) {
+          console.log('Share failed or cancelled, falling back to download', shareError);
+        }
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        const a = document.createElement('a');
+        a.href = base64data;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      reader.readAsDataURL(blob);
     } catch (error) {
       console.error('Backup failed:', error);
       alert('备份失败，请查看控制台错误信息。');
@@ -131,6 +171,19 @@ export default function App() {
                 ...att,
                 data: await base64ToBlob(att.data)
               })));
+            }
+            if (task.customFields) {
+              processedTask.customFields = { ...task.customFields };
+              for (const [key, value] of Object.entries(task.customFields)) {
+                if (key.startsWith('audio_') && typeof value === 'string') {
+                  processedTask.customFields[key] = await base64ToBlob(value);
+                } else if (key.startsWith('attachments_') && Array.isArray(value)) {
+                  processedTask.customFields[key] = await Promise.all(value.map(async (att: any) => ({
+                    ...att,
+                    data: await base64ToBlob(att.data)
+                  })));
+                }
+              }
             }
             return processedTask;
           }));
@@ -185,21 +238,20 @@ export default function App() {
               <Download className="w-3 h-3 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">备份</span>
             </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-md transition-colors border-2 border-slate-300 shadow-sm active:scale-95"
+            <label
+              className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-md transition-colors border-2 border-slate-300 shadow-sm active:scale-95 cursor-pointer"
               title="从 JSON 恢复数据"
             >
               <Upload className="w-3 h-3 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">恢复</span>
-            </button>
-            <input
-              type="file"
-              accept=".json"
-              ref={fileInputRef}
-              onChange={handleRestore}
-              className="hidden"
-            />
+              <input
+                type="file"
+                accept=".json"
+                ref={fileInputRef}
+                onChange={handleRestore}
+                className="hidden"
+              />
+            </label>
           </div>
 
           <div className="flex bg-slate-300 p-0.5 sm:p-1 rounded-lg border-2 border-slate-400">
@@ -287,18 +339,40 @@ export default function App() {
                 {!isBatchMode ? (
                   <button
                     onClick={() => setIsBatchMode(true)}
-                    className="flex items-center justify-center bg-white text-red-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 transition-all shadow-md border-2 border-red-200 active:scale-95"
+                    className="flex items-center justify-center bg-white text-blue-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-50 transition-all shadow-md border-2 border-blue-200 active:scale-95"
                   >
-                    批量删除
+                    批量选中
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
+                    <div className="relative group">
+                      <button
+                        disabled={selectedTaskIds.size === 0}
+                        className="flex items-center justify-center bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md border-2 border-blue-800 active:scale-95"
+                      >
+                        移动到... ({selectedTaskIds.size})
+                      </button>
+                      <div className="absolute top-full left-0 mt-1 hidden group-hover:block z-50 bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[150px]">
+                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                          {categories.map(c => (
+                            <button
+                              key={c.id}
+                              onClick={() => handleBatchMoveCategory(c.id)}
+                              className="text-left px-2 py-1.5 rounded text-[11px] hover:bg-slate-100 transition-colors flex items-center gap-2"
+                            >
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                              {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                     <button
                       onClick={handleBatchDelete}
                       disabled={selectedTaskIds.size === 0}
                       className="flex items-center justify-center bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 disabled:opacity-50 transition-all shadow-md border-2 border-red-800 active:scale-95"
                     >
-                      确认删除 ({selectedTaskIds.size})
+                      删除 ({selectedTaskIds.size})
                     </button>
                     <button
                       onClick={() => {
@@ -364,18 +438,40 @@ export default function App() {
                     {!isBatchMode ? (
                       <button
                         onClick={() => setIsBatchMode(true)}
-                        className="flex items-center justify-center text-xs bg-white text-red-600 px-4 py-1.5 rounded-lg font-bold hover:bg-red-50 transition-all shadow-md border-2 border-red-200 active:scale-95"
+                        className="flex items-center justify-center text-xs bg-white text-blue-600 px-4 py-1.5 rounded-lg font-bold hover:bg-blue-50 transition-all shadow-md border-2 border-blue-200 active:scale-95"
                       >
-                        批量删除
+                        批量选中
                       </button>
                     ) : (
                       <div className="flex items-center gap-2">
+                        <div className="relative group">
+                          <button
+                            disabled={selectedTaskIds.size === 0}
+                            className="flex items-center justify-center text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md border-2 border-blue-800 active:scale-95"
+                          >
+                            移动到... ({selectedTaskIds.size})
+                          </button>
+                          <div className="absolute top-full right-0 mt-1 hidden group-hover:block z-50 bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[150px]">
+                            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                              {categories.map(c => (
+                                <button
+                                  key={c.id}
+                                  onClick={() => handleBatchMoveCategory(c.id)}
+                                  className="text-left px-2 py-1.5 rounded text-[11px] hover:bg-slate-100 transition-colors flex items-center gap-2"
+                                >
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                                  {c.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
                         <button
                           onClick={handleBatchDelete}
                           disabled={selectedTaskIds.size === 0}
                           className="flex items-center justify-center text-xs bg-red-600 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 transition-all shadow-md border-2 border-red-800 active:scale-95"
                         >
-                          确认删除 ({selectedTaskIds.size})
+                          删除 ({selectedTaskIds.size})
                         </button>
                         <button
                           onClick={() => {

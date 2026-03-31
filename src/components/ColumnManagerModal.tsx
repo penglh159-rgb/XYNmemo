@@ -180,8 +180,10 @@ export function ColumnManagerModal({ columns, onSave, onClose }: ColumnManagerMo
   };
 
   const addColumn = (col: typeof AVAILABLE_OPTIONAL_COLUMNS[0]) => {
-    if (localColumns.some(c => c.id === col.id)) return;
-    setLocalColumns(prev => [...prev, { ...col, visible: true }]);
+    const existingCount = localColumns.filter(c => c.id.startsWith(col.id)).length;
+    const newId = existingCount === 0 ? col.id : `${col.id}_${Date.now()}`;
+    const newName = existingCount === 0 ? col.name : `${col.name}${existingCount + 1}`;
+    setLocalColumns(prev => [...prev, { ...col, id: newId, name: newName, visible: true }]);
   };
 
   return (
@@ -224,21 +226,15 @@ export function ColumnManagerModal({ columns, onSave, onClose }: ColumnManagerMo
           </div>
 
           <div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">添加新列</h4>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">添加预设列</h4>
+            
             <div className="grid grid-cols-2 gap-2">
               {AVAILABLE_OPTIONAL_COLUMNS.map(col => {
-                const exists = localColumns.some(c => c.id === col.id);
                 return (
                   <button
                     key={col.id}
                     onClick={() => addColumn(col)}
-                    disabled={exists}
-                    className={cn(
-                      "flex items-center justify-between p-3 rounded-xl border-2 transition-all text-sm font-medium",
-                      exists 
-                        ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed" 
-                        : "bg-white border-slate-200 text-slate-700 hover:border-blue-500 hover:text-blue-600 shadow-sm"
-                    )}
+                    className="flex items-center justify-between p-3 rounded-xl border-2 transition-all text-sm font-medium bg-white border-slate-200 text-slate-700 hover:border-blue-500 hover:text-blue-600 shadow-sm"
                   >
                     {col.name}
                     <Plus className="w-4 h-4" />

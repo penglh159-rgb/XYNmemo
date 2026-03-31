@@ -8,8 +8,11 @@ import {
   ChevronDown,
   ChevronUp,
   Filter,
-  X,
+  X as XIcon,
   Check,
+  ArrowDownAZ,
+  ArrowUpAZ,
+  ArrowUpDown,
 } from 'lucide-react';
 import {
   DndContext,
@@ -66,9 +69,11 @@ export function TaskTable({
     if (saved) {
       let parsed = JSON.parse(saved);
       
-      // 1. Rename 'actions' to 'status' if it exists
+      // 1. Rename 'actions' to 'status' if it exists and reduce width
       parsed = parsed.map((col: any) => {
-        if (col.id === 'actions') return { ...col, id: 'status', name: '状态' };
+        if (col.id === 'actions' || col.id === 'status') {
+          return { ...col, id: 'status', name: '状态', width: Math.min(col.width || 80, 80), minWidth: 60 };
+        }
         return col;
       });
 
@@ -95,8 +100,11 @@ export function TaskTable({
     return DEFAULT_COLUMNS;
   });
   const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'manual' | 'date-desc' | 'date-asc'>('manual');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
 
   // Fetch all available tags for the current category (or all if no category)
   const allAvailableTags = useLiveQuery(async () => {
@@ -171,7 +179,7 @@ export function TaskTable({
         if (statusIdx !== -1) {
           next[statusIdx] = { ...next[statusIdx], id: 'status', name: '状态', visible: true };
         } else {
-          next.unshift({ id: 'status', name: '状态', width: 100, minWidth: 80, visible: true });
+          next.unshift({ id: 'status', name: '状态', width: 80, minWidth: 60, visible: true });
         }
         return next;
       });
@@ -195,24 +203,34 @@ export function TaskTable({
   };
 
   const rawTasks = useLiveQuery(
-    () => {
-      let collection = db.tasks.orderBy('order');
+    async () => {
+      let arr = await db.tasks.orderBy('order').toArray();
       
       if (categoryId) {
-        collection = collection.filter(t => t.categoryId === categoryId);
+        arr = arr.filter(t => t.categoryId === categoryId);
       } else if (filter && filter !== 'all') {
-        collection = collection.filter(t => t.status === filter);
+        arr = arr.filter(t => t.status === filter);
       }
       
       if (selectedTags.length > 0) {
-        collection = collection.filter(t => 
+        arr = arr.filter(t => 
           selectedTags.some(tag => t.tags?.includes(tag))
         );
       }
       
-      return collection.toArray();
+      if (selectedStatuses.length > 0) {
+        arr = arr.filter(t => selectedStatuses.includes(t.status));
+      }
+      
+      if (sortOrder === 'date-asc') {
+        arr.sort((a, b) => (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99'));
+      } else if (sortOrder === 'date-desc') {
+        arr.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      }
+      
+      return arr;
     },
-    [filter, categoryId, selectedTags]
+    [filter, categoryId, selectedTags, selectedStatuses, sortOrder]
   );
 
   useEffect(() => {
@@ -255,8 +273,7 @@ export function TaskTable({
     }
   };
 
-  if (!rawTasks) return <div className="p-8 text-center text-slate-500">加载中...</div>;
-  if (tasks.length === 0) return <div className="p-8 text-center text-slate-500">暂无事项</div>;
+  const isLoading = !rawTasks;
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (onSelectAll) {
@@ -284,21 +301,46 @@ export function TaskTable({
     if (onSelectAll) onSelectAll([]);
   };
 
+  const handleBatchCopy = async () => {
+    if (selectedTaskIds.size === 0 || !targetCategoryId) return;
+    
+    const tasksToCopy = tasks.filter(t => selectedTaskIds.has(t.id));
+    const newTasks = tasksToCopy.map(t => ({
+      ...t,
+      id: crypto.randomUUID(),
+      categoryId: targetCategoryId,
+      order: Date.now() + Math.random()
+    }));
+    
+    await db.tasks.bulkAdd(newTasks);
+    if (onSelectAll) onSelectAll([]);
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedTaskIds.size === 0) return;
+    if (window.confirm(`确定删除选中的 ${selectedTaskIds.size} 个事项吗？`)) {
+      await Promise.all(
+        Array.from(selectedTaskIds).map((id: string) => db.tasks.delete(id))
+      );
+      if (onSelectAll) onSelectAll([]);
+    }
+  };
+
   const visibleColumns = columns.filter((c: any) => c.visible !== false);
 
   return (
     <div className="flex-1 overflow-auto flex flex-col">
       {/* Batch Move Bar */}
-      {isBatchMode && categoryId && (
-        <div className="p-3 border-b border-slate-200 bg-slate-50 flex items-center gap-4">
+      {isBatchMode && (
+        <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-500 font-medium">批量移动:</span>
+            <span className="text-sm text-slate-500 font-medium">操作:</span>
             <select 
               value={targetCategoryId}
               onChange={(e) => setTargetCategoryId(e.target.value)}
-              className="text-sm border-slate-300 rounded-md py-1 px-2 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="text-sm border-slate-300 rounded-md py-1 px-2 focus:ring-2 focus:ring-blue-500 outline-none max-w-[120px]"
             >
-              <option value="">移动到分类...</option>
+              <option value="">选择目标分类...</option>
               {categories.filter(c => c.id !== categoryId).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -306,9 +348,23 @@ export function TaskTable({
             <button 
               onClick={handleBatchMove}
               disabled={selectedTaskIds.size === 0 || !targetCategoryId}
-              className="text-sm bg-blue-600 text-white px-4 py-1 rounded-md disabled:opacity-50 hover:bg-blue-700 transition-colors font-bold shadow-sm"
+              className="text-sm bg-blue-600 text-white px-3 py-1 rounded-md disabled:opacity-50 hover:bg-blue-700 transition-colors font-bold shadow-sm whitespace-nowrap"
             >
-              确认移动
+              移动
+            </button>
+            <button 
+              onClick={handleBatchCopy}
+              disabled={selectedTaskIds.size === 0 || !targetCategoryId}
+              className="text-sm bg-green-600 text-white px-3 py-1 rounded-md disabled:opacity-50 hover:bg-green-700 transition-colors font-bold shadow-sm whitespace-nowrap"
+            >
+              复制
+            </button>
+            <button 
+              onClick={handleBatchDelete}
+              disabled={selectedTaskIds.size === 0}
+              className="text-sm bg-red-600 text-white px-3 py-1 rounded-md disabled:opacity-50 hover:bg-red-700 transition-colors font-bold shadow-sm whitespace-nowrap ml-auto"
+            >
+              删除
             </button>
           </div>
         </div>
@@ -358,7 +414,7 @@ export function TaskTable({
                       <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-100">
                         <span className="text-[10px] font-bold text-slate-400 uppercase">筛选标签 ({selectedTags.length})</span>
                         <button onClick={() => setIsTagFilterOpen(false)} className="text-slate-400 hover:text-slate-600">
-                          <X className="w-3 h-3" />
+                          <XIcon className="w-3 h-3" />
                         </button>
                       </div>
                       <div className="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
@@ -399,6 +455,87 @@ export function TaskTable({
                   )}
                 </div>
               )}
+              {col.id === 'status' && (
+                <div className="relative mr-1">
+                  <button 
+                    onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
+                    className={cn(
+                      "p-1 rounded hover:bg-white transition-colors",
+                      selectedStatuses.length > 0 ? "text-blue-600 bg-blue-50" : "text-slate-500"
+                    )}
+                    title="按状态筛选"
+                  >
+                    <ChevronDown className="w-3 h-3 fill-current" />
+                  </button>
+                  {isStatusFilterOpen && (
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[120px]">
+                      <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">筛选状态</span>
+                        <button onClick={() => setIsStatusFilterOpen(false)} className="text-slate-400 hover:text-slate-600">
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button 
+                          onClick={() => { setSelectedStatuses([]); setIsStatusFilterOpen(false); }}
+                          className={cn(
+                            "text-left px-2 py-1.5 rounded text-[11px] hover:bg-slate-100 transition-colors flex items-center gap-2",
+                            selectedStatuses.length === 0 && "bg-blue-50 text-blue-700 font-bold"
+                          )}
+                        >
+                          {selectedStatuses.length === 0 && <Check className="w-3 h-3" />}
+                          全部状态
+                        </button>
+                        {['todo', 'in-progress', 'blocked', 'done'].map(status => {
+                          const isSelected = selectedStatuses.includes(status);
+                          const labels: Record<string, string> = {
+                            'todo': '待开始',
+                            'in-progress': '进行中',
+                            'blocked': '受阻',
+                            'done': '已完成'
+                          };
+                          return (
+                            <button
+                              key={status}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedStatuses(selectedStatuses.filter(t => t !== status));
+                                } else {
+                                  setSelectedStatuses([...selectedStatuses, status]);
+                                }
+                              }}
+                              className={cn(
+                                "text-left px-2 py-1.5 rounded text-[11px] hover:bg-slate-100 transition-colors flex items-center gap-2",
+                                isSelected && "bg-blue-50 text-blue-700 font-bold"
+                              )}
+                            >
+                              {isSelected && <Check className="w-3 h-3" />}
+                              {labels[status]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {col.id === 'date' && (
+                <button
+                  onClick={() => {
+                    if (sortOrder === 'manual') setSortOrder('date-desc');
+                    else if (sortOrder === 'date-desc') setSortOrder('date-asc');
+                    else setSortOrder('manual');
+                  }}
+                  className="mr-1 p-1 rounded hover:bg-white transition-colors text-slate-400 hover:text-blue-600"
+                  title={sortOrder === 'manual' ? '当前：自定义排序。点击按由近到远排序' : sortOrder === 'date-desc' ? '当前：由近到远。点击按由远到近排序' : '当前：由远到近。点击恢复自定义排序'}
+                >
+                  {sortOrder === 'manual' && <ArrowUpDown className="w-3 h-3" />}
+                  {sortOrder === 'date-desc' && <ArrowDownAZ className="w-3 h-3 text-blue-600" />}
+                  {sortOrder === 'date-asc' && <ArrowUpAZ className="w-3 h-3 text-blue-600" />}
+                </button>
+              )}
+              
               <span className={col.id === 'status' ? 'mx-auto' : ''}>{col.name}</span>
               
               {index < visibleColumns.length - 1 && col.id !== 'status' && (
@@ -415,30 +552,36 @@ export function TaskTable({
         </div>
 
         {/* Body */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={tasks.map(t => t.id)}
-            strategy={verticalListSortingStrategy}
+        {isLoading ? (
+          <div className="p-8 text-center text-slate-500">加载中...</div>
+        ) : tasks.length === 0 ? (
+          <div className="p-8 text-center text-slate-500">暂无事项</div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            <div className="divide-y divide-slate-100">
-              {tasks.map((task) => (
-                <TaskRow 
-                  key={task.id} 
-                  task={task} 
-                  categories={categories} 
-                  isBatchMode={isBatchMode}
-                  isSelected={selectedTaskIds.has(task.id)}
-                  onToggleSelection={() => toggleSelection(task.id)}
-                  columns={visibleColumns}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+            <SortableContext
+              items={tasks.map(t => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="divide-y divide-slate-100">
+                {tasks.map((task) => (
+                  <TaskRow 
+                    key={task.id} 
+                    task={task} 
+                    categories={categories} 
+                    isBatchMode={isBatchMode}
+                    isSelected={selectedTaskIds.has(task.id)}
+                    onToggleSelection={() => toggleSelection(task.id)}
+                    columns={visibleColumns}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
       </div>
 
       {isColumnManagerOpen && (
