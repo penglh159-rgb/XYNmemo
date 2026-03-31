@@ -18,7 +18,7 @@ interface RichTextEditorModalProps {
 export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTextEditorModalProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
-  const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
+  const [pickerPos, setPickerPos] = useState({ bottom: 0, left: 0 });
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const highlightPickerRef = useRef<HTMLDivElement>(null);
 
@@ -122,7 +122,7 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
     // Center the picker on the button, but keep it within screen bounds
     const centerX = rect.left + rect.width / 2;
     const safeX = Math.max(85, Math.min(window.innerWidth - 85, centerX));
-    setPickerPos({ top: rect.bottom, left: safeX });
+    setPickerPos({ bottom: window.innerHeight - rect.top + 8, left: safeX });
     
     if (type === 'color') {
       setShowColorPicker(!showColorPicker);
@@ -154,8 +154,12 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
           </div>
         </div>
         
+        <div className="flex-1 overflow-y-auto p-2 sm:p-4 bg-slate-50/50 min-h-[100px] sm:min-h-[300px]">
+          <EditorContent editor={editor} />
+        </div>
+        
         <div 
-          className="flex flex-wrap items-center gap-1 p-1.5 border-b border-slate-200 bg-white sticky top-0 z-10 select-none"
+          className="flex flex-wrap items-center gap-1 p-1.5 border-t border-slate-200 bg-white shrink-0 select-none"
           onPointerDown={(e) => e.preventDefault()}
           onMouseDown={(e) => e.preventDefault()}
         >
@@ -273,8 +277,8 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
             {showColorPicker && (
               <div 
                 ref={colorPickerRef}
-                className="fixed z-[10000] mt-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 select-none"
-                style={{ top: pickerPos.top, left: pickerPos.left }}
+                className="fixed z-[10000] mb-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 select-none"
+                style={{ bottom: pickerPos.bottom, left: pickerPos.left }}
               >
                 {['#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280'].map(color => (
                   <button
@@ -311,8 +315,8 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
             {showHighlightPicker && (
               <div 
                 ref={highlightPickerRef}
-                className="fixed z-[10000] mt-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 select-none"
-                style={{ top: pickerPos.top, left: pickerPos.left }}
+                className="fixed z-[10000] mb-2 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 grid grid-cols-4 gap-2 min-w-[160px] -translate-x-1/2 select-none"
+                style={{ bottom: pickerPos.bottom, left: pickerPos.left }}
               >
                 {['transparent', '#FEF08A', '#BFDBFE', '#BBF7D0', '#FECACA', '#E9D5FF', '#FBCFE8', '#E5E7EB'].map(color => (
                   <button
@@ -366,10 +370,6 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
           >
             <Redo className="w-4 h-4" />
           </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 sm:p-4 bg-slate-50/50 min-h-[100px] sm:min-h-[300px]">
-          <EditorContent editor={editor} />
         </div>
 
         <div className="p-4 pl-12 border-t border-slate-100 bg-white flex justify-end gap-3 shrink-0 relative">

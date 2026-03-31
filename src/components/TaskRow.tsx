@@ -1,9 +1,10 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Circle, CheckCircle2, AlertCircle, PlayCircle, Mic, Square, Paperclip, FileText, Image as ImageIcon, Trash2, ChevronDown, ChevronUp, Tag, Plus, X as XIcon } from 'lucide-react';
+import { GripVertical, Circle, CheckCircle2, AlertCircle, PlayCircle, Mic, Square, Paperclip, FileText, Image as ImageIcon, Trash2, ChevronDown, ChevronUp, Tag, Plus, X as XIcon, Calendar, Clock } from 'lucide-react';
 import { db, Task, Category, TaskStatus } from '../db';
 import { cn } from '../lib/utils';
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format } from 'date-fns';
 import { RichTextEditorModal } from './RichTextEditorModal';
@@ -296,16 +297,25 @@ const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId
         accept="*/*"
       />
 
-      {isManagingAttachments && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]">
+      {isManagingAttachments && createPortal(
+        <div 
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsManagingAttachments(false)}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
               <h3 className="font-bold text-slate-800">管理附件</h3>
               <button onClick={() => setIsManagingAttachments(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100">
                 <XIcon className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col gap-2">
               {attachments.map((att: any) => (
                 <div key={att.id} className="flex items-center gap-3 p-2 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors">
                   <input 
@@ -350,7 +360,8 @@ const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -758,22 +769,41 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
 
           if (col.id === 'date') {
             return (
-              <div key={col.id} className="flex flex-col gap-1" style={{ gridRow: 1 }}>
-                <input
-                  type="date"
-                  value={task.date}
-                  onChange={handleDateChange}
-                  className="text-sm text-slate-600 bg-transparent border-none p-0 focus:ring-0 cursor-pointer hover:text-blue-600"
-                />
-                <input
-                  type="time"
-                  value={task.time || ''}
-                  onChange={handleTimeChange}
-                  className={cn(
-                    "text-[10px] text-slate-400 bg-transparent border-none p-0 focus:ring-0 cursor-pointer hover:text-blue-600",
-                    task.time && "text-blue-500 font-medium"
+              <div key={col.id} className="flex flex-col gap-1 relative group/date" style={{ gridRow: 1 }}>
+                <div className="flex items-center relative">
+                  <input
+                    type="date"
+                    value={task.date}
+                    onChange={handleDateChange}
+                    className={cn(
+                      "text-sm bg-transparent border-none p-0 focus:ring-0 cursor-pointer hover:text-blue-600 w-full",
+                      task.date ? "text-slate-600" : "text-transparent"
+                    )}
+                  />
+                  {!task.date && (
+                    <div className="absolute left-0 pointer-events-none flex items-center text-slate-400 text-xs gap-1 opacity-60 group-hover/date:opacity-100 transition-opacity">
+                      <Calendar className="w-3 h-3" />
+                      <span>设置日期</span>
+                    </div>
                   )}
-                />
+                </div>
+                <div className="flex items-center relative">
+                  <input
+                    type="time"
+                    value={task.time || ''}
+                    onChange={handleTimeChange}
+                    className={cn(
+                      "text-[10px] bg-transparent border-none p-0 focus:ring-0 cursor-pointer hover:text-blue-600 w-full",
+                      task.time ? "text-blue-500 font-medium" : "text-transparent"
+                    )}
+                  />
+                  {!task.time && (
+                    <div className="absolute left-0 pointer-events-none flex items-center text-slate-400 text-[10px] gap-1 opacity-60 group-hover/date:opacity-100 transition-opacity">
+                      <Clock className="w-3 h-3" />
+                      <span>设置时间</span>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           }
@@ -825,9 +855,10 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
                           e.stopPropagation();
                           setExpandedNotes(prev => ({ ...prev, [col.id]: !prev[col.id] }));
                         }}
-                        className="absolute bottom-0 right-0 bg-blue-100 px-2 py-0.5 rounded-tl-md text-[10px] font-bold text-blue-700 hover:bg-blue-200 hover:text-blue-800 opacity-0 group-hover/note:opacity-100 transition-all shadow-sm border-t border-l border-blue-200"
+                        className="absolute bottom-0 right-0 text-blue-500 bg-blue-50/90 hover:bg-blue-100 p-0.5 rounded-tl rounded-br z-10 transition-colors shadow-sm"
+                        title={isExpanded ? '收起' : '展开'}
                       >
-                        {isExpanded ? '收起' : '展开'}
+                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                       </button>
                     )}
                   </div>

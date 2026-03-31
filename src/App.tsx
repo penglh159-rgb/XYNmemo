@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { db, initDB, Category, Task } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LayoutGrid, ListTodo, Plus, Settings2, Download, Upload } from 'lucide-react';
+import { LayoutGrid, ListTodo, Plus, Settings2, Download, Upload, AudioLines } from 'lucide-react';
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -42,7 +42,7 @@ export default function App() {
       id: crypto.randomUUID(),
       categoryId,
       title: '新事项',
-      date: new Date().toISOString().split('T')[0],
+      date: '',
       status: 'todo',
       shortNote: '',
       notes: '',
@@ -115,13 +115,13 @@ export default function App() {
       };
 
       const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
-      const filename = `progress-memo-backup-${new Date().toISOString().split('T')[0]}.json`;
+      const filename = `vonote-backup-${new Date().toISOString().split('T')[0]}.json`;
       
       if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'application/json' })] })) {
         try {
           await navigator.share({
             files: [new File([blob], filename, { type: 'application/json' })],
-            title: '进度备忘备份文件',
+            title: 'VoNote备份文件',
           });
           return;
         } catch (shareError) {
@@ -224,9 +224,9 @@ export default function App() {
       <header className="bg-white border-b-2 border-slate-300 px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between sticky top-0 z-10 shadow-md overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pr-2">
           <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-blue-700 flex items-center justify-center text-white font-bold shadow-sm text-xs sm:text-base">
-            P
+            <AudioLines className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <h1 className="text-sm sm:text-lg font-bold tracking-tight text-slate-800 whitespace-nowrap">进度备忘</h1>
+          <h1 className="text-sm sm:text-lg font-bold tracking-tight text-slate-800 whitespace-nowrap">VoNote</h1>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <div className="flex items-center gap-1 sm:gap-2">

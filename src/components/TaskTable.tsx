@@ -223,9 +223,17 @@ export function TaskTable({
       }
       
       if (sortOrder === 'date-asc') {
-        arr.sort((a, b) => (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99'));
+        arr.sort((a, b) => {
+          const dateA = (a.date || '9999-99-99') + 'T' + (a.time || '99:99');
+          const dateB = (b.date || '9999-99-99') + 'T' + (b.time || '99:99');
+          return dateA.localeCompare(dateB);
+        });
       } else if (sortOrder === 'date-desc') {
-        arr.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        arr.sort((a, b) => {
+          const dateA = (a.date || '') + 'T' + (a.time || '');
+          const dateB = (b.date || '') + 'T' + (b.time || '');
+          return dateB.localeCompare(dateA);
+        });
       }
       
       return arr;

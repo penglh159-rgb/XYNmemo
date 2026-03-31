@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, GripVertical, Eye, EyeOff, Edit2, Plus, Trash2 } from 'lucide-react';
 import {
   DndContext,
@@ -186,7 +187,7 @@ export function ColumnManagerModal({ columns, onSave, onClose }: ColumnManagerMo
     setLocalColumns(prev => [...prev, { ...col, id: newId, name: newName, visible: true }]);
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-slate-200">
         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
@@ -257,6 +258,7 @@ export function ColumnManagerModal({ columns, onSave, onClose }: ColumnManagerMo
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
