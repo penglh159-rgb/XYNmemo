@@ -927,65 +927,6 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
         )}
       </div>
 
-      {isManagingAttachments && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-800">管理附件 ({task.attachments?.length || 0})</h3>
-              <button onClick={() => setIsManagingAttachments(false)} className="text-slate-400 hover:text-slate-600">×</button>
-            </div>
-            <div className="p-4 overflow-y-auto flex-1 grid grid-cols-3 gap-3">
-              {task.attachments?.map(att => {
-                const isImage = att.type.startsWith('image/');
-                const url = URL.createObjectURL(att.data);
-                const isSelected = selectedAttachments.includes(att.id);
-                return (
-                  <div 
-                    key={att.id}
-                    className={cn(
-                      "relative aspect-square rounded-lg border-2 overflow-hidden cursor-pointer group",
-                      isSelected ? "border-blue-500 ring-2 ring-blue-500/20" : "border-slate-100 hover:border-slate-200"
-                    )}
-                    onClick={() => toggleAttachmentSelection(att.id)}
-                  >
-                    {isImage ? (
-                      <img src={url} alt={att.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 p-2">
-                        <FileText className="w-8 h-8 text-slate-400 mb-1" />
-                        <span className="text-[10px] text-slate-500 truncate w-full text-center">{att.name}</span>
-                      </div>
-                    )}
-                    <div className={cn(
-                      "absolute top-1 right-1 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                      isSelected ? "bg-blue-500 border-blue-500 text-white" : "bg-white/80 border-slate-300"
-                    )}>
-                      {isSelected && <CheckCircle2 className="w-3 h-3" />}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="p-4 border-t bg-slate-50 flex justify-between items-center">
-              <button 
-                onClick={deleteSelectedAttachments}
-                disabled={selectedAttachments.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-              >
-                <Trash2 className="w-4 h-4" />
-                删除选中 ({selectedAttachments.length})
-              </button>
-              <button 
-                onClick={() => setIsManagingAttachments(false)}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
-              >
-                完成
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {editingRichTextColId && (
         <RichTextEditorModal
           initialContent={editingRichTextColId === 'notes' ? (task.notes || '') : (customFields[editingRichTextColId] || '')}
