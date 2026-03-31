@@ -68,7 +68,7 @@ function SortableCategoryItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm group",
+        "flex items-center gap-2 p-2 sm:p-3 bg-white border border-slate-200 rounded-lg shadow-sm group w-full",
         isDragging && "opacity-50 shadow-md border-blue-300"
       )}
     >
@@ -78,12 +78,12 @@ function SortableCategoryItem({
       
       {editingId === category.id ? (
         <>
-          <div className="relative w-6 h-6 rounded-full overflow-hidden border-2 border-slate-300 shadow-sm shrink-0 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+          <div className="relative w-8 h-8 rounded-full border-2 border-slate-300 shadow-sm shrink-0" style={{ backgroundColor: editColor }}>
             <input
               type="color"
               value={editColor}
               onChange={(e) => setEditColor(e.target.value)}
-              className="absolute -top-2 -left-2 w-10 h-10 cursor-pointer border-0 p-0"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
           </div>
           <input
@@ -91,7 +91,7 @@ function SortableCategoryItem({
             type="text"
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
-            className="flex-1 min-w-0 text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="flex-1 min-w-0 w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/20"
             onKeyDown={(e) => e.key === 'Enter' && handleUpdate(category.id)}
           />
           <button onClick={() => handleUpdate(category.id)} className="text-green-600 hover:bg-green-50 p-1.5 rounded-md transition-colors shrink-0">
@@ -109,7 +109,7 @@ function SortableCategoryItem({
           />
           <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700">{category.name}</span>
           
-          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => {
                 setEditingId(category.id);
@@ -149,7 +149,7 @@ export function CategoryManagerModal({ categories, onClose }: CategoryManagerMod
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
+        delay: 100,
         tolerance: 5,
       },
     }),

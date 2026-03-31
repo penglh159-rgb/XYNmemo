@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Circle, CheckCircle2, AlertCircle, PlayCircle, Mic, Square, Paperclip, FileText, Image as ImageIcon, Trash2, ChevronDown, ChevronUp, Tag, Plus, X as XIcon, Calendar, Clock } from 'lucide-react';
+import { GripVertical, Circle, CheckCircle2, AlertCircle, PlayCircle, Mic, Square, Paperclip, FileText, Image as ImageIcon, Trash2, ChevronDown, ChevronUp, Tag, Plus, X as XIcon, Calendar, Clock, Download } from 'lucide-react';
 import { db, Task, Category, TaskStatus } from '../db';
 import { cn } from '../lib/utils';
 import React, { useState, useRef, useEffect } from 'react';
@@ -47,7 +47,8 @@ const AudioCell = ({ task, colId }: { task: Task, colId: string }) => {
       };
 
       mediaRecorder.onstop = async () => {
-        const newBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const mimeType = mediaRecorder.mimeType || 'audio/mp4';
+        const newBlob = new Blob(audioChunksRef.current, { type: mimeType });
         if (isMain) {
           await db.tasks.update(task.id, { audioBlob: newBlob });
         } else {
@@ -100,84 +101,89 @@ const AudioCell = ({ task, colId }: { task: Task, colId: string }) => {
          <Mic className="w-4 h-4" />}
       </button>
 
-      {isAudioPopoverOpen && (
-        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 min-w-[240px] animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-500">录音控制</span>
-            <button onClick={() => setIsAudioPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">×</button>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            {isRecording ? (
-              <button onClick={stopRecording} className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition-colors shadow-sm">
-                <Square className="w-4 h-4 fill-current" />
-                <span className="text-xs font-bold">停止录音</span>
+      {isAudioPopoverOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/20 backdrop-blur-sm p-4" onClick={() => setIsAudioPopoverOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 p-4 w-full max-w-[300px] animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-bold text-slate-700">录音控制</span>
+              <button onClick={() => setIsAudioPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <XIcon className="w-5 h-5" />
               </button>
-            ) : !audioUrl ? (
-              <button onClick={startRecording} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                <Mic className="w-4 h-4" />
-                <span className="text-xs font-bold">开始录音</span>
-              </button>
-            ) : (
-              <div className="flex flex-col gap-2 w-full">
-                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-2 border border-slate-100">
-                  <button onClick={togglePlay} className="text-blue-600 hover:text-blue-700">
-                    {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <PlayCircle className="w-5 h-5" />}
-                  </button>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="100" 
-                    value={progress}
-                    onChange={(e) => {
-                      if (audioRef.current) {
-                        const time = (Number(e.target.value) / 100) * audioRef.current.duration;
-                        audioRef.current.currentTime = time;
-                        setProgress(Number(e.target.value));
-                      }
-                    }}
-                    className="flex-1 h-1 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  />
-                  <audio 
-                    ref={audioRef} 
-                    src={audioUrl} 
-                    onTimeUpdate={(e) => {
-                      const target = e.target as HTMLAudioElement;
-                      setProgress((target.currentTime / target.duration) * 100 || 0);
-                    }}
-                    onEnded={() => setIsPlaying(false)}
-                    className="hidden" 
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={async () => {
-                      if (window.confirm('确定删除录音吗？')) {
-                        if (isMain) {
-                          await db.tasks.update(task.id, { audioBlob: undefined });
-                        } else {
-                          const newCustomFields = { ...task.customFields };
-                          delete newCustomFields[colId];
-                          await db.tasks.update(task.id, { customFields: newCustomFields });
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {isRecording ? (
+                <button onClick={stopRecording} className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white py-3 rounded-lg hover:bg-red-600 transition-colors shadow-sm">
+                  <Square className="w-5 h-5 fill-current" />
+                  <span className="text-sm font-bold">停止录音</span>
+                </button>
+              ) : !audioUrl ? (
+                <button onClick={startRecording} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                  <Mic className="w-5 h-5" />
+                  <span className="text-sm font-bold">开始录音</span>
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3 w-full">
+                  <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                    <button onClick={togglePlay} className="text-blue-600 hover:text-blue-700">
+                      {isPlaying ? <Square className="w-6 h-6 fill-current" /> : <PlayCircle className="w-7 h-7" />}
+                    </button>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="100" 
+                      value={progress}
+                      onChange={(e) => {
+                        if (audioRef.current) {
+                          const time = (Number(e.target.value) / 100) * audioRef.current.duration;
+                          audioRef.current.currentTime = time;
+                          setProgress(Number(e.target.value));
                         }
-                        setAudioUrl(null);
-                      }
-                    }}
-                    className="flex-1 text-[10px] font-bold text-red-500 hover:bg-red-50 py-1 rounded transition-colors"
-                  >
-                    删除录音
-                  </button>
-                  <button 
-                    onClick={startRecording}
-                    className="flex-1 text-[10px] font-bold text-blue-600 hover:bg-blue-50 py-1 rounded transition-colors"
-                  >
-                    重新录制
-                  </button>
+                      }}
+                      className="flex-1 h-2 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                    <audio 
+                      ref={audioRef} 
+                      src={audioUrl} 
+                      onTimeUpdate={(e) => {
+                        const target = e.target as HTMLAudioElement;
+                        setProgress((target.currentTime / target.duration) * 100 || 0);
+                      }}
+                      onEnded={() => setIsPlaying(false)}
+                      className="hidden" 
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={async () => {
+                        if (window.confirm('确定删除录音吗？')) {
+                          if (isMain) {
+                            await db.tasks.update(task.id, { audioBlob: undefined });
+                          } else {
+                            const newCustomFields = { ...task.customFields };
+                            delete newCustomFields[colId];
+                            await db.tasks.update(task.id, { customFields: newCustomFields });
+                          }
+                          setAudioUrl(null);
+                        }
+                      }}
+                      className="flex-1 text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 py-2 rounded-lg transition-colors border border-red-100"
+                    >
+                      删除录音
+                    </button>
+                    <button 
+                      onClick={startRecording}
+                      className="flex-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 py-2 rounded-lg transition-colors border border-blue-100"
+                    >
+                      重新录制
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -234,6 +240,22 @@ const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId
       }
       setSelectedAttachments([]);
     }
+  };
+
+  const downloadSelectedAttachments = () => {
+    if (selectedAttachments.length === 0) return;
+    const selected = attachments.filter((a: any) => selectedAttachments.includes(a.id));
+    selected.forEach((attachment: any) => {
+      const url = URL.createObjectURL(attachment.file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = attachment.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+    setSelectedAttachments([]);
   };
 
   return (
@@ -345,6 +367,14 @@ const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId
               <span className="text-xs text-slate-500">已选择 {selectedAttachments.length} 个附件</span>
               <div className="flex gap-2">
                 <button 
+                  onClick={downloadSelectedAttachments}
+                  disabled={selectedAttachments.length === 0}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-1"
+                >
+                  <Download className="w-4 h-4" />
+                  下载选中
+                </button>
+                <button 
                   onClick={deleteSelectedAttachments}
                   disabled={selectedAttachments.length === 0}
                   className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors shadow-sm"
@@ -374,6 +404,7 @@ interface TaskRowProps {
   isSelected?: boolean;
   onToggleSelection?: () => void;
   columns: { id: string; width: number }[];
+  currentCategoryId?: string | null;
 }
 
 const statusColors: Record<TaskStatus, string> = {
@@ -390,7 +421,7 @@ const statusLabels: Record<TaskStatus, string> = {
   'done': '已完成'
 };
 
-export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode, isSelected, onToggleSelection, columns }) => {
+export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode, isSelected, onToggleSelection, columns, currentCategoryId }) => {
   const category = categories.find(c => c.id === task.categoryId);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [title, setTitle] = useState(task.title);
@@ -430,11 +461,16 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
   const categoryPopoverRef = useRef<HTMLDivElement>(null);
 
   const allExistingTags = useLiveQuery(async () => {
-    const tasks = await db.tasks.toArray();
+    let tasks;
+    if (currentCategoryId) {
+      tasks = await db.tasks.where('categoryId').equals(currentCategoryId).toArray();
+    } else {
+      tasks = await db.tasks.toArray();
+    }
     const tags = new Set<string>();
     tasks.forEach(t => t.tags?.forEach(tag => tags.add(tag)));
     return Array.from(tags).sort();
-  }, []);
+  }, [currentCategoryId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -724,8 +760,8 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
                         </div>
                         
                         {allExistingTags && allExistingTags.length > 0 && (
-                          <div className="max-h-[120px] overflow-y-auto flex flex-col gap-1">
-                            <div className="text-[9px] font-bold text-slate-400 uppercase mb-1 px-1">常用标签</div>
+                          <div className="max-h-[150px] overflow-y-auto flex flex-col gap-1">
+                            <div className="text-[9px] font-bold text-slate-400 uppercase mb-1 px-1 shrink-0">常用标签</div>
                             {allExistingTags
                               .filter(tag => !(task.tags || []).includes(tag))
                               .filter(tag => tag.toLowerCase().includes(newTagInput.toLowerCase()))
@@ -733,7 +769,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({ task, categories, isBatchMode,
                                 <button
                                   key={tag}
                                   onClick={() => handleAddTag(tag)}
-                                  className="text-left px-2 py-1 rounded text-[10px] text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors truncate"
+                                  className="text-left px-2 py-1.5 rounded text-[10px] text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors truncate shrink-0"
                                 >
                                   #{tag}
                                 </button>

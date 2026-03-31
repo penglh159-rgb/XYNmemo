@@ -584,6 +584,7 @@ export function TaskTable({
                     isSelected={selectedTaskIds.has(task.id)}
                     onToggleSelection={() => toggleSelection(task.id)}
                     columns={visibleColumns}
+                    currentCategoryId={categoryId}
                   />
                 ))}
               </div>
