@@ -371,7 +371,7 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
         <div className="p-4 pl-12 border-t border-slate-100 bg-white flex justify-end gap-3 shrink-0 relative">
           {/* Custom Resize Handle at Bottom-Left */}
           <div 
-            className="absolute bottom-1 left-1 w-8 h-8 flex items-end justify-start p-1 cursor-sw-resize z-50 group touch-none"
+            className="absolute bottom-3 left-3 w-8 h-8 flex items-end justify-start p-1 cursor-sw-resize z-50 group touch-none"
             onMouseDown={handleResizeStart}
             onTouchStart={handleResizeStart}
           >
