@@ -10,6 +10,7 @@ import {
   Filter,
   X as XIcon,
   Check,
+  Search,
   ArrowDownAZ,
   ArrowUpAZ,
   ArrowUpDown,
@@ -105,6 +106,9 @@ export function TaskTable({
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch all available tags for the current category (or all if no category)
   const allAvailableTags = useLiveQuery(async () => {
@@ -222,6 +226,15 @@ export function TaskTable({
         arr = arr.filter(t => selectedStatuses.includes(t.status));
       }
       
+      if (searchKeyword.trim()) {
+        const kw = searchKeyword.toLowerCase();
+        arr = arr.filter(t => 
+          t.title.toLowerCase().includes(kw) || 
+          t.shortNote?.toLowerCase().includes(kw) ||
+          t.notes?.toLowerCase().includes(kw)
+        );
+      }
+      
       if (sortOrder === 'date-asc') {
         arr.sort((a, b) => {
           const dateA = (a.date || '9999-99-99') + 'T' + (a.time || '99:99');
@@ -238,7 +251,7 @@ export function TaskTable({
       
       return arr;
     },
-    [filter, categoryId, selectedTags, selectedStatuses, sortOrder]
+    [filter, categoryId, selectedTags, selectedStatuses, sortOrder, searchKeyword]
   );
 
   useEffect(() => {
@@ -381,7 +394,7 @@ export function TaskTable({
       <div className="min-w-max w-full">
         {/* Header */}
         <div 
-          className="grid gap-4 p-3 border-b-2 border-slate-300 bg-slate-200 text-xs font-bold text-slate-700 uppercase tracking-wider sticky top-0 z-30"
+          className="grid gap-4 p-3 border-b-2 border-slate-300 bg-slate-200 text-xs font-bold text-slate-700 uppercase tracking-wider sticky top-0 z-40"
           style={{ gridTemplateColumns: visibleColumns.map((c: any) => `${c.width}px`).join(' ') }}
         >
           {visibleColumns.map((col: any, index: number) => (
@@ -406,17 +419,55 @@ export function TaskTable({
                 </div>
               )}
               {col.id === 'title' && (
-                <div className="relative mr-1">
-                  <button 
-                    onClick={() => setIsTagFilterOpen(!isTagFilterOpen)}
-                    className={cn(
-                      "p-1 rounded hover:bg-white transition-colors",
-                      selectedTags.length > 0 ? "text-blue-600 bg-blue-50" : "text-slate-500"
+                <div className="flex items-center gap-1 w-full">
+                  <div className="relative flex-1 min-w-0">
+                    {isSearchOpen ? (
+                      <div className="flex items-center bg-white rounded border border-blue-300 px-1.5 py-0.5 w-full">
+                        <Search className="w-3 h-3 text-blue-500 shrink-0" />
+                        <input
+                          ref={searchInputRef}
+                          autoFocus
+                          type="text"
+                          value={searchKeyword}
+                          onChange={(e) => setSearchKeyword(e.target.value)}
+                          placeholder="搜索..."
+                          className="w-full bg-transparent border-none outline-none text-[10px] px-1 lowercase"
+                          onBlur={() => {
+                            if (!searchKeyword) setIsSearchOpen(false);
+                          }}
+                        />
+                        <button onClick={() => { setSearchKeyword(''); setIsSearchOpen(false); }} className="text-slate-400 hover:text-slate-600">
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <span className="truncate">{col.name}</span>
+                        <button 
+                          onClick={() => setIsSearchOpen(true)}
+                          className={cn(
+                            "p-1 rounded hover:bg-white transition-colors",
+                            searchKeyword ? "text-blue-600 bg-blue-50" : "text-slate-500"
+                          )}
+                          title="搜索事项"
+                        >
+                          <Search className="w-3 h-3" />
+                        </button>
+                      </div>
                     )}
-                    title="按标签筛选"
-                  >
-                    <ChevronDown className="w-3 h-3 fill-current" />
-                  </button>
+                  </div>
+                  
+                  <div className="relative shrink-0">
+                    <button 
+                      onClick={() => setIsTagFilterOpen(!isTagFilterOpen)}
+                      className={cn(
+                        "p-1 rounded hover:bg-white transition-colors",
+                        selectedTags.length > 0 ? "text-blue-600 bg-blue-50" : "text-slate-500"
+                      )}
+                      title="按标签筛选"
+                    >
+                      <ChevronDown className="w-3 h-3 fill-current" />
+                    </button>
                   {isTagFilterOpen && (
                     <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-slate-200 shadow-xl rounded-lg p-2 min-w-[160px]">
                       <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-100">
@@ -462,9 +513,12 @@ export function TaskTable({
                     </div>
                   )}
                 </div>
-              )}
-              {col.id === 'status' && (
-                <div className="relative mr-1">
+              </div>
+            )}
+            {col.id === 'status' && (
+              <div className="flex items-center gap-1 mx-auto">
+                <span className="truncate">{col.name}</span>
+                <div className="relative">
                   <button 
                     onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
                     className={cn(
@@ -526,7 +580,8 @@ export function TaskTable({
                     </div>
                   )}
                 </div>
-              )}
+              </div>
+            )}
               
               {col.id === 'date' && (
                 <button
@@ -544,7 +599,9 @@ export function TaskTable({
                 </button>
               )}
               
-              <span className={col.id === 'status' ? 'mx-auto' : ''}>{col.name}</span>
+              {col.id !== 'title' && col.id !== 'status' && (
+                <span className={col.id === 'status' ? 'mx-auto' : ''}>{col.name}</span>
+              )}
               
               {index < visibleColumns.length - 1 && col.id !== 'status' && (
                 <div 

@@ -104,7 +104,7 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
     const deltaY = clientY - startPos.current.y;
     
     setSize({
-      width: Math.max(300, Math.min(window.innerWidth - 32, startSize.current.width + deltaX * 2)),
+      width: Math.max(300, Math.min(window.innerWidth - 32, startSize.current.width - deltaX * 2)),
       height: Math.max(200, Math.min(window.innerHeight - 32, startSize.current.height + deltaY))
     });
   };
@@ -369,14 +369,14 @@ export function RichTextEditorModal({ initialContent, onSave, onClose }: RichTex
         </div>
 
         <div className="p-4 pl-12 border-t border-slate-100 bg-white flex justify-end gap-3 shrink-0 relative">
-          {/* Custom Resize Handle at Bottom-Right */}
+          {/* Custom Resize Handle at Bottom-Left */}
           <div 
-            className="absolute bottom-1 right-1 w-8 h-8 flex items-end justify-end p-1 cursor-se-resize z-50 group touch-none"
+            className="absolute bottom-1 left-1 w-8 h-8 flex items-end justify-start p-1 cursor-sw-resize z-50 group touch-none"
             onMouseDown={handleResizeStart}
             onTouchStart={handleResizeStart}
           >
-            <div className="w-5 h-5 bg-slate-100 rounded-tl-lg rounded-br-lg flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shadow-sm border border-slate-200">
-              <MoveDiagonal className="w-3 h-3" />
+            <div className="w-5 h-5 bg-slate-100 rounded-tr-lg rounded-bl-lg flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shadow-sm border border-slate-200">
+              <MoveDiagonal className="w-3 h-3 transform rotate-90" />
             </div>
           </div>
 

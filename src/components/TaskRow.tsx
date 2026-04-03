@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Circle, CheckCircle2, AlertCircle, PlayCircle, Mic, Square, Paperclip, FileText, Image as ImageIcon, Trash2, ChevronDown, ChevronUp, Tag, Plus, X as XIcon, Calendar, Clock, Download } from 'lucide-react';
+import { GripVertical, Circle, CheckCircle2, AlertCircle, PlayCircle, Mic, Square, Paperclip, FileText, Image as ImageIcon, Trash2, ChevronDown, ChevronUp, Tag, Plus, X as XIcon, Calendar, Clock, Download, FolderOpen } from 'lucide-react';
 import { db, Task, Category, TaskStatus } from '../db';
 import { cn } from '../lib/utils';
 import React, { useState, useRef, useEffect } from 'react';
@@ -323,7 +323,7 @@ const AttachmentCell = ({ task, colId, setPreviewImageUrl }: { task: Task, colId
             className="w-6 h-6 rounded border border-slate-200 flex items-center justify-center text-slate-400 hover:text-blue-500 transition-colors"
             title="管理附件"
           >
-            <FileText className="w-3 h-3" />
+            <FolderOpen className="w-3 h-3" />
           </button>
         )}
       </div>

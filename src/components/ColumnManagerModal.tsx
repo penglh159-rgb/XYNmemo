@@ -5,7 +5,8 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -84,7 +85,7 @@ function SortableColumnItem({ column, onToggleVisibility, onRename, onRemove, is
       )}
     >
       {!(column.id === 'status' || column.id === 'actions') && (
-        <button {...attributes} {...listeners} className="text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing">
+        <button {...attributes} {...listeners} className="text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing touch-none">
           <GripVertical className="w-4 h-4" />
         </button>
       )}
@@ -147,7 +148,17 @@ export function ColumnManagerModal({ columns, onSave, onClose }: ColumnManagerMo
   );
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 5,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })

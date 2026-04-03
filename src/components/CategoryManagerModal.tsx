@@ -81,8 +81,8 @@ function SortableCategoryItem({
       </div>
       
       {editingId === category.id ? (
-        <div className="flex flex-col gap-2 w-full">
-          <div className="flex items-center gap-2 w-full">
+        <div className="flex flex-col gap-2 flex-1 min-w-0">
+          <div className="flex items-center gap-1 sm:gap-2 w-full">
             <div className="relative w-8 h-8 rounded-full border-2 border-slate-300 shadow-sm shrink-0" style={{ backgroundColor: editColor }}>
               <input
                 type="color"
@@ -96,7 +96,7 @@ function SortableCategoryItem({
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="flex-1 min-w-0 w-full text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="flex-1 min-w-0 text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/20"
               onKeyDown={(e) => e.key === 'Enter' && handleUpdate(category.id)}
             />
             <button onClick={() => handleUpdate(category.id)} className="text-green-600 hover:bg-green-50 p-1.5 rounded-md transition-colors shrink-0">
@@ -106,7 +106,7 @@ function SortableCategoryItem({
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 pl-10">
+          <div className="flex gap-2 overflow-x-auto pb-1 pl-10 no-scrollbar">
             {PREDEFINED_COLORS.map(c => (
               <button
                 key={c}
