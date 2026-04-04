@@ -12,6 +12,7 @@ export default defineConfig(({mode}) => {
       tailwindcss(), 
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: 'auto',
         manifest: {
           name: 'VoNote',
           short_name: 'VoNote',
