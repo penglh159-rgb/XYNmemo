@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { db, initDB, Category, Task } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LayoutGrid, ListTodo, Plus, Settings2, Download, Upload, AudioLines, ChevronDown, Trash2 } from 'lucide-react';
+import { LayoutGrid, ListTodo, Plus, Settings2, Download, Upload, AudioLines, ChevronDown, Trash2, MonitorSmartphone } from 'lucide-react';
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -29,7 +29,30 @@ export default function App() {
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const categories = useLiveQuery(() => db.categories.toArray().then(cats => cats.sort((a, b) => (a.order || 0) - (b.order || 0)))) || [];
 
@@ -233,6 +256,16 @@ export default function App() {
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <div className="flex items-center gap-1 sm:gap-2">
+            {deferredPrompt && (
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors shadow-sm active:scale-95 animate-pulse"
+                title="安装应用到桌面"
+              >
+                <MonitorSmartphone className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">安装应用</span>
+              </button>
+            )}
             <button
               onClick={handleBackup}
               className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-md transition-colors border-2 border-slate-300 shadow-sm active:scale-95"
